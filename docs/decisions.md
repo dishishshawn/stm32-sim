@@ -14,7 +14,7 @@ so. Revisit a decision only with new evidence, and update this file when you do.
 | CPU core (later) | Decide when a second chip is added. Candidates: c1570/rp2350js `CortexM33Core` (MIT, TS) or labwired-core (MIT, Rust/wasm) |
 | Part visuals     | `@wokwi/elements` (MIT) for every part it has; our own SVG for the breadboard, wires, Nucleo board and IC packages         |
 | Register data    | Patched SVD from stm32-rs, converted once to checked-in JSON: names, addresses, reset values, bitfields                    |
-| ELF + PC→line    | `@gba-kit/debug-info` (MIT, no dependencies, DWARF 2–5), checked against our first real ELF                                |
+| ELF + PC→line    | `@gba-kit/debug-info` (MIT, no dependencies, DWARF 2–5). Checked in T6 on a GCC 14 DWARF 5 ELF: works                      |
 | Test firmware    | Built from source with `arm-none-eabi-gcc`. CI installs it. ELFs are not committed                                         |
 
 ## 1. Stack: TypeScript on Node ≥ 24
@@ -326,6 +326,19 @@ packages (`elfy`, `elf-tools`, `elfinfo`) don't parse DWARF at all.
 - The objdump text depends on locale and width, and truncates file names to 35
   characters without `-w`.
 - Its format has never been documented as stable.
+
+**Checked in T6 (2026-10-07): the package works, so no fallback.** Tested on
+`build/blink.elf` from `arm-none-eabi-gcc` 14.2.1. Its `.debug_info` is DWARF 5. The
+C units' line tables are version 3 and the startup `.s` unit's is version 5; the
+package reads both. `Reset_Handler` and `main` resolve, and every PC in `main` maps
+to the right line of `blink/main.c`. Two gaps, both filled in `src/engine/elf.ts`:
+
+- It doesn't expose program headers or `e_entry`, so `elf.ts` reads them itself
+  (about 20 lines).
+- `pcToSource` returns the file name relative to the compile directory, as DWARF
+  records it (`blink/main.c`, since `make` runs in `firmware/`). `elf.ts` joins it
+  with the unit's `DW_AT_comp_dir`, so it returns an absolute path, as `addr2line`
+  does. The CLI and UI can make it relative to the current directory.
 
 ## 6. Firmware toolchain for tests
 
