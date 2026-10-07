@@ -172,16 +172,22 @@ facts, and delete the comment.
 - Use the datasheet's names, in the order of its pin table. The TC74 is
   `["NC", "SDA", "GND", "SCLK", "VDD"]`, the TO-220 pins 1 to 5. Its clock pin
   is `SCLK`, not `SCL`: keep the datasheet's spelling.
-- If `@wokwi/elements` has an element for the part (LED, push-button,
-  resistor, 7-segment display), use the element's pin names instead, so the
-  UI can attach wires to them: the LED is `["A", "C"]`, the push-button
-  `["1.l", "1.r", "2.l", "2.r"]`.
+- If `@wokwi/elements` has an element for the part, use the element's pin
+  names instead, so the UI can attach wires to them: the LED is `["A", "C"]`,
+  the push-button `["1.l", "1.r", "2.l", "2.r"]`. The package is only installed
+  once the UI exists, so check this list (from `docs/decisions.md` §3): LED,
+  7-segment, push-button, resistor, potentiometer, slide potentiometer, NTC
+  temperature sensor, DHT22, 8-way DIP switch. If your part isn't on it, use
+  the datasheet's names.
 - Names must be unique within the part. Where the datasheet repeats one, add
   a suffix: `GND.1` and `GND.2`, joined inside the part with
   `ctx.setSwitch("GND.1", "GND.2", true)` in `create()`. Unconnected pins can
   be named by number, as the MCP23017's `NC11` and `NC14`.
 - Declare the power pins (`VDD`, `GND`) so they can be wired, even though
-  power is not simulated: `create()` is the power-on reset.
+  power is not simulated: `create()` is the power-on reset. Wire them in your
+  test and in circuits, as on a breadboard. A pin whose meaning depends on
+  where it's tied is checked against them (`ctx.sameNet("ADD0", "GND")`, step
+  6b), so an unwired GND means "not tied to ground".
 - A part may only use its declared pins. `ctx.drive("NOPE", …)` throws
   `tc74 "temp" has no pin "NOPE"`.
 
@@ -201,6 +207,10 @@ The TC74's props:
     temperature: { type: "number", default: 25, min: -65, max: 150 },
   },
 ```
+
+For a sensor's slider, prefer the datasheet's operating (measurement) range:
+that's what firmware is specified against. The TC74 above uses its storage
+range, which also works.
 
 A prop is one of three kinds (`PropSpec`):
 
@@ -395,22 +405,29 @@ const address = () =>
           pointerNext = true;
           byteIndex = 0;
         },
-        // MSB first, then LSB, from the same register. Assumed: a third
-        // byte starts the register again.
+        // MSB first, then LSB. The whole register is latched at the MSB, so
+        // a conversion (tick) landing between the two bytes can't mix two
+        // readings. Assumed: a third byte starts the register again.
         read() {
-          const value = readRegister(pointer);
-          const byte = byteIndex % 2 === 0 ? value >> 8 : value & 0xff;
+          if (byteIndex % 2 === 0) latched = readRegister(pointer);
+          const byte = byteIndex % 2 === 0 ? latched >> 8 : latched & 0xff;
           byteIndex++;
           return byte;
         },
 ```
 
-with `let byteIndex = 0;` next to `pointerNext`. Writes are the same idea:
-count the bytes, keep the MSB until the LSB arrives, and move the pointer
-only if the datasheet says it moves.
+with `let byteIndex = 0;` and `let latched = 0;` next to `pointerNext`. Writes are the same idea:
+count the bytes. When a byte takes effect is the datasheet's call: some parts
+apply each byte as it arrives (the TMP102 does, so a STOP after the MSB changes
+only the MSB), others only once the whole word is in. Move the pointer only if
+the datasheet says it moves.
 
 - Return `"nack"` from `write()` only where the datasheet says the part NACKs
   a byte. The bus already NACKs on a wrong address for you.
+- Driving your own pins from inside `write()` or `read()` with `ctx.drive` is
+  safe: for example, an ALERT output that a register read clears.
+- `address()` answers one address. A part can't also answer the general call
+  (0x00) or the SMBus alert response (0x0C) yet. Mark those "not simulated".
 
 ## 7. Timing: `tick(seconds)`
 
