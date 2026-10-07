@@ -106,13 +106,13 @@ test("GPIOA's clock instead of GPIOB's: PB6/PB7 stay analog, I2C never starts", 
 
   // The diagnostic says why, at the line whose write was ignored.
   const moder = r.diagnostics.find((d) =>
-    d.message.startsWith("wrote GPIOB->MODER"),
+    d.message.startsWith("wrote GPIOB_MODER "),
   );
-  assert.ok(moder, "no diagnostic for the GPIOB->MODER write");
+  assert.ok(moder, "no diagnostic for the GPIOB_MODER write");
   assert.equal(moder.rule, "gpio-clock-off");
   assert.match(
     moder.message,
-    /^wrote GPIOB->MODER while RCC->IOPENR\.\w+ \(bit 1\) = 0 .* the write was ignored$/,
+    /^wrote GPIOB_MODER \(0x50000400\) while RCC_IOPENR \(0x40021034\) bit 1 \w+ = 0 .* the write was ignored$/,
   );
   assert.equal(moder.at, line(main, "GPIOB->MODER ="));
 });

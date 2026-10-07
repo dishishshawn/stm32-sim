@@ -75,7 +75,7 @@ test("run and inspect report diagnostics, in text and --json", () => {
   assert.equal(r.code, 0, r.stderr);
   assert.ok(
     r.stdout.includes(
-      `\n  ${at}: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0`,
+      `\n  ${at}: warning: wrote GPIOB_ODR (0x50000414) while RCC_IOPENR (0x40021034) bit 1 GPIOBEN = 0`,
     ),
     r.stdout,
   );
@@ -85,7 +85,7 @@ test("run and inspect report diagnostics, in text and --json", () => {
     const time = command === "run" ? "--for" : "--at";
     const j = sim(command, elf("clock-off"), time, "300ms", "--json");
     const d = JSON.parse(j.stdout).diagnostics.find((d: { message: string }) =>
-      d.message.startsWith("wrote GPIOB->ODR"),
+      d.message.startsWith("wrote GPIOB_ODR "),
     );
     assert.equal(d.rule, "gpio-clock-off");
     assert.equal(d.severity, "warning");

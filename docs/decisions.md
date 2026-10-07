@@ -769,7 +769,10 @@ I2C1EN = 1, so flags appear over simulated time:
   before ever setting START gets no pin diagnostic.
 - `Chip` carries its AF table (`af`), which GPIO already used, so rules can name
   I2C1's candidate pins.
-- Field names in messages are the CMSIS names (§4), as in the learner's code.
+- Registers in messages are named `<PERIPH>_<REG> (0xADDRESS)`, fields `… bit N NAME`
+  (T41, `src/diagnostics/names.ts`). That's how exam-style firmware `#define`s them, so
+  a learner can check their own address against the message. Field names are the CMSIS
+  names (§4).
 
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
