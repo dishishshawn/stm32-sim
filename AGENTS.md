@@ -24,8 +24,12 @@ Node 24 and `just` come from `.mise.toml`. Run `npm install` once after cloning.
 
 - `just test`: run every `*.test.ts` (`node --test`).
 - `node --test path/to/x.test.ts`: run one file.
+- `node --test 'src/cpu/**/*.test.ts'`: run one directory (`node --test src/cpu/` fails on Node 24).
 - `node --test --test-name-pattern "<name>"`: run one test by name.
 - `just typecheck`: run `tsc` with no output files.
+- `just fw`: build every `firmware/<name>/main.c` into `build/<name>.elf` (needs `arm-none-eabi-gcc`).
+
+`node --test` treats these as test files, so don't use them for helpers: `test-*.ts`, `*-test.ts`, `*_test.ts`, `test.ts`, and anything under a `test/` directory.
 
 There is no build step: Node runs the `.ts` files directly. That only works for TS
 syntax that can be erased, so:

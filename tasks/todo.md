@@ -76,27 +76,27 @@ Copy `src/cortex-m0-core.ts` and `src/instructions.spec.ts` from rp2040js at com
   `as const` objects.
 - Change no instruction behavior here; that's T11.
 
-- [ ] Every upstream instruction case passes under `node:test`, run against a test
+- [x] Every upstream instruction case passes under `node:test`, run against a test
       bus backed by flat RAM.
-- [ ] `rg -i rp2040 src/cpu` matches only the attribution header. The header names
+- [x] `rg -i rp2040 src/cpu` matches only the attribution header. The header names
       the upstream repo, the commit and the MIT license, with Uri Shaked's copyright.
-- [ ] `just typecheck` passes.
+- [x] `just typecheck` passes.
 
-**Verify:** `node --test src/cpu/`. **Blocked by:** T1. **Wave 1**, parallel with T3,
+**Verify:** `node --test 'src/cpu/**/*.test.ts'`. **Blocked by:** T1. **Wave 1**, parallel with T3,
 T4 and T5. **Files:** `src/cpu/cortex-m0-core.ts`, `src/cpu/cortex-m0-core.test.ts`,
-`src/cpu/bus.ts`, `src/cpu/test-bus.ts`. **Size:** M.
+`src/cpu/bus.ts`, `src/cpu/ram-bus.ts`. **Size:** M.
 
 ### T3: Firmware build, vendored CMSIS, `blink`
 
-- [ ] Vendor these, each with its `LICENSE` and a short `VERSION` note:
+- [x] Vendor these, each with its `LICENSE` and a short `VERSION` note:
   - ST cmsis-device-g0 v1.4.5: `stm32g0xx.h`, `stm32g031xx.h`, `system_stm32g0xx.h`,
     the gcc `startup_stm32g031xx.s` and `system_stm32g0xx.c` templates;
   - the Arm CMSIS-Core headers that `stm32g031xx.h` includes, at the version
     v1.4.5 expects.
-- [ ] Add a linker script for the G031K8 (64 KB flash at `0x08000000`, 8 KB SRAM at
+- [x] Add a linker script for the G031K8 (64 KB flash at `0x08000000`, 8 KB SRAM at
       `0x20000000`) and `firmware/Makefile`. A new `fw` recipe in the `justfile` builds
       `build/<program>.elf` with `-mcpu=cortex-m0plus -mthumb -g`.
-- [ ] `firmware/blink/main.c` enables the GPIOA clock, sets PA0 as an output and
+- [x] `firmware/blink/main.c` enables the GPIOA clock, sets PA0 as an output and
       toggles it in a busy-wait loop. No SysTick yet.
 - [ ] CI installs `gcc-arm-none-eabi` from apt and runs `just fw` before
       `just test`.
@@ -129,7 +129,7 @@ T4 and T5. **Files:** `vendor/cmsis-device-g0/**`, `vendor/cmsis-core/**`,
   Record whether the SVD includes SysTick, NVIC and SCB. That answers the open item
   in `decisions.md` §4.
 
-**Verify:** `node --test tools/ src/chips/`. **Blocked by:** T1. **Wave 1**, parallel
+**Verify:** `node --test 'tools/**/*.test.ts' 'src/chips/**/*.test.ts'`. **Blocked by:** T1. **Wave 1**, parallel
 with T2, T3 and T5. **Files:** `vendor/svd/*`, `tools/svd2json.ts`,
 `tools/svd2json.test.ts`, `src/chips/stm32g031k8.registers.json`. **Size:** M.
 
@@ -161,7 +161,7 @@ T16, T18, T19 or T29 start.
   - an unknown part type, pin or prop is an error that names the bad field. This is
     a trust boundary: users hand-edit this file.
 
-**Verify:** `node --test src/engine/ src/parts/`. **Blocked by:** T1. **Wave 1**,
+**Verify:** `node --test 'src/engine/**/*.test.ts' 'src/parts/**/*.test.ts'`. **Blocked by:** T1. **Wave 1**,
 parallel with T2, T3 and T4. **Files:** `src/engine/nets.ts`, `src/engine/circuit.ts`,
 `src/parts/part.ts`, `src/parts/index.ts`, plus tests. **Size:** M.
 
@@ -208,7 +208,7 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
   - an unmapped address raises HardFault;
   - byte lanes.
 
-**Verify:** `node --test src/engine/ src/peripherals/`. **Blocked by:** T2, T4.
+**Verify:** `node --test 'src/engine/**/*.test.ts' 'src/peripherals/**/*.test.ts'`. **Blocked by:** T2, T4.
 **Wave 2.** **Files:** `memory-bus.ts`, `events.ts`, `peripheral.ts`,
 `src/chips/stm32g031k8.ts`, plus tests. **Size:** M.
 
@@ -229,7 +229,7 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
   - IDR follows the net, including a pull-up on a floating net;
   - open-drain output with an external weak pull-up gives wired-AND.
 
-**Verify:** `node --test src/peripherals/`. **Blocked by:** T5, T7. **Wave 3**,
+**Verify:** `node --test 'src/peripherals/**/*.test.ts'`. **Blocked by:** T5, T7. **Wave 3**,
 parallel with T15 and T18. **Files:** `rcc.ts`, `gpio.ts`, tests, and the chip
 definition list. **Size:** M.
 
@@ -270,7 +270,7 @@ T8, and T0 to run locally. **Wave 4.** **Files:** `engine.ts`, `engine.test.ts`,
 - [ ] The tests spawn the CLI on blink and assert the JSON shape and exit codes. A bad
       circuit gives exit 2 with a message naming the field.
 
-**Verify:** `node --test src/cli/`. **Blocked by:** T9. **Wave 5**, parallel with T12
+**Verify:** `node --test 'src/cli/**/*.test.ts'`. **Blocked by:** T9. **Wave 5**, parallel with T12
 and T14. **Files:** `src/cli/sim.ts`, `src/cli/sim.test.ts`, `docs/cli.md`,
 `package.json` (`bin`). **Size:** M.
 
@@ -284,7 +284,7 @@ and T14. **Files:** `src/cli/sim.ts`, `src/cli/sim.test.ts`, `docs/cli.md`,
       (ARMv6-M with no debugger attached escalates it to HardFault) and record the
       choice.
 
-**Verify:** `node --test src/cpu/`. **Blocked by:** T2. **Wave 2**; runs in parallel
+**Verify:** `node --test 'src/cpu/**/*.test.ts'`. **Blocked by:** T2. **Wave 2**; runs in parallel
 with the rest of Phase 1. **Files:** `src/cpu/cortex-m0-core.ts`, its test.
 **Size:** S.
 
@@ -395,7 +395,7 @@ runs long, split the read path into a follow-up task.
   - a pull-up holds an undriven net high, and an open-drain low still wins;
   - a button to GND pulls a pulled-up net low and releases it.
 
-**Verify:** `node --test src/parts/`. **Blocked by:** T5. **Wave 2.** **Files:**
+**Verify:** `node --test 'src/parts/**/*.test.ts'`. **Blocked by:** T5. **Wave 2.** **Files:**
 `resistor.ts`, `pushbutton.ts`, tests, `index.ts`. **Size:** S.
 
 ### T17: TC74 firmware end-to-end test with the bus trace
@@ -412,7 +412,7 @@ runs long, split the read path into a follow-up task.
       the trace is START, 0x48 W, ACK, 0x00, ACK, … STOP.
 - [ ] `sim inspect --json` includes that trace.
 
-**Verify:** `just fw && node --test firmware/tc74-read/`. **Blocked by:** T10, T12,
+**Verify:** `just fw && node --test 'firmware/tc74-read/**/*.test.ts'`. **Blocked by:** T10, T12,
 T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e2e.test.ts}`.
 **Size:** M.
 
@@ -454,7 +454,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
   - CC is the reverse;
   - a floating pin stays unlit.
 
-**Verify:** `node --test src/parts/`. **Blocked by:** T5. **Wave 2.** **Files:**
+**Verify:** `node --test 'src/parts/**/*.test.ts'`. **Blocked by:** T5. **Wave 2.** **Files:**
 `led.ts`, `seven-segment.ts`, tests, `index.ts`. **Size:** S.
 
 ### T20: Mid-run inputs
@@ -467,7 +467,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
   - a TC74 temperature changed at 1 s is visible in `inspect` at 2 s;
   - an unknown prop gives exit 2 with a list of the valid props.
 
-**Verify:** `node --test src/cli/`. **Blocked by:** T10, T15. **Wave 6.** **Files:**
+**Verify:** `node --test 'src/cli/**/*.test.ts'`. **Blocked by:** T10, T15. **Wave 6.** **Files:**
 `engine.ts`, `sim.ts`, tests, `docs/cli.md`. **Size:** S.
 
 ### T21: Thermometer firmware; acceptance test 2
@@ -483,7 +483,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 - [ ] Decode the digits from the 7-segment `values`. At 22 the display shows "22";
       after one press it shows "71"; after a second press it shows "22".
 
-**Verify:** `just fw && node --test firmware/thermometer/`. **Blocked by:** T17, T18,
+**Verify:** `just fw && node --test 'firmware/thermometer/**/*.test.ts'`. **Blocked by:** T17, T18,
 T19, T20. **Wave 7.** **Files:** `firmware/thermometer/{main.c,circuit.json,e2e.test.ts}`.
 **Size:** M.
 
@@ -496,7 +496,7 @@ Each test asserts the failure real hardware shows, not a simulator error.
 - [ ] The pull-up resistors are removed from the circuit. ISR.BUSY is set, and the
       firmware hangs waiting on TXIS.
 
-**Verify:** `node --test firmware/faults/`. **Blocked by:** T17. **Wave 7.** The two
+**Verify:** `node --test 'firmware/faults/**/*.test.ts'`. **Blocked by:** T17. **Wave 7.** The two
 cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pullups}/…`.
 **Size:** S.
 
@@ -508,7 +508,7 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 - [ ] With a common-anode display driven by the common-cathode patterns, the inverted
       segments light.
 
-**Verify:** `node --test firmware/faults/`. **Blocked by:** T21. **Wave 8.**
+**Verify:** `node --test 'firmware/faults/**/*.test.ts'`. **Blocked by:** T21. **Wave 8.**
 **Files:** `firmware/faults/{reset-floating,segments-shifted,wrong-polarity}/…`.
 **Size:** M.
 
@@ -527,7 +527,7 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 - [ ] A test proves diagnostics are pure observers: the event log is identical with
       and without them.
 
-**Verify:** `node --test src/diagnostics/`. **Blocked by:** T10. **Wave 6.**
+**Verify:** `node --test 'src/diagnostics/**/*.test.ts'`. **Blocked by:** T10. **Wave 6.**
 **Files:** `rule.ts`, `index.ts`, two rule files, tests. **Size:** M.
 
 ### T25: I2C diagnostic rules
@@ -541,7 +541,7 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
   Each rule has its own test.
 
-**Verify:** `node --test src/diagnostics/`. **Blocked by:** T14, T24. **Wave 7.**
+**Verify:** `node --test 'src/diagnostics/**/*.test.ts'`. **Blocked by:** T14, T24. **Wave 7.**
 **Files:** four rule files and their tests. **Size:** M.
 
 **Checkpoint 3:** see `plan.md`.
@@ -600,7 +600,7 @@ T26. **Wave 9.** **Size:** S.
   - a TO-220-5 for the TC74.
 - [ ] A test checks that every pin a part declares has a coordinate in its art.
 
-**Verify:** `node --test src/ui/art/`. **Blocked by:** T5. **Wave 2**; can run
+**Verify:** `node --test 'src/ui/art/**/*.test.ts'`. **Blocked by:** T5. **Wave 2**; can run
 alongside all of Phases 1–4. **Size:** M.
 
 ### T30: UI shell and `sim ui`

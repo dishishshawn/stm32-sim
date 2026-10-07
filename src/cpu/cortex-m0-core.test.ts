@@ -15,7 +15,7 @@ import {
   SYSM_PRIMASK,
   SYSM_PSP,
 } from "./cortex-m0-core.ts";
-import { TestBus } from "./test-bus.ts";
+import { TestBus } from "./ram-bus.ts";
 import {
   opcodeADCS,
   opcodeADDS1,
