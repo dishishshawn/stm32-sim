@@ -71,7 +71,7 @@ function assertHangsOnTxis(r: ReturnType<typeof run>, file: string) {
   assert.deepEqual(r.trace, []);
   // The PC is in wait_for()'s polling loop, and stays there.
   const loop = [
-    "uint32_t isr = I2C1->ISR;",
+    "uint32_t isr = I2C1_ISR;",
     "if (isr & flag)",
     "if (isr & I2C_ISR_NACKF)",
   ].map((text) => line(file, text));
@@ -114,7 +114,7 @@ test("GPIOA's clock instead of GPIOB's: PB6/PB7 stay analog, I2C never starts", 
     moder.message,
     /^wrote GPIOB_MODER \(0x50000400\) while RCC_IOPENR \(0x40021034\) bit 1 \w+ = 0 .* the write was ignored$/,
   );
-  assert.equal(moder.at, line(main, "GPIOB->MODER ="));
+  assert.equal(moder.at, line(main, "GPIOB_MODER ="));
 });
 
 test("no pull-ups on SDA/SCL: BUSY is set, and the firmware hangs waiting on TXIS", () => {

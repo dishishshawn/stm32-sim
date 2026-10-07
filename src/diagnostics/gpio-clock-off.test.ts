@@ -44,13 +44,13 @@ test("writing GPIOB with its clock off names the enable bit, at the line that wr
     count: 1,
     cycle: moder.cycle,
     pc: moder.pc,
-    at: line("GPIOB->MODER ="),
+    at: line("GPIOB_MODER ="),
   });
   // The toggle loop ran 3 times in 0.3 s: one diagnostic, counted.
   const odr = ds.filter((d) => d.message.startsWith("wrote GPIOB_ODR "));
   assert.equal(odr.length, 1);
   assert.equal(odr[0].count, 3);
-  assert.equal(odr[0].at, line("GPIOB->ODR ^="));
+  assert.equal(odr[0].at, line("GPIOB_ODR ^="));
   assert.match(
     ds.find((d) => d.message.startsWith("read GPIOB_ODR "))!.message,
     /so the read returned 0$/,

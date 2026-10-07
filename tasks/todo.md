@@ -711,7 +711,7 @@ on `while (!(RCC_CR & (1U << 25)))`, because the PLL never locked.
 
 ### T40: Examples in exam style, and a template
 
-- [ ] blink, blink-systick-poll/irq, tc74-read, thermometer, clock-off and the fault
+- [x] blink, blink-systick-poll/irq, tc74-read, thermometer, clock-off and the fault
   firmwares define each register they use by address (verified against the register
   JSON), with no `#include "stm32g0xx.h"`; `#include <stdint.h>` stays. Behavior is
   unchanged: every existing test passes as it is.

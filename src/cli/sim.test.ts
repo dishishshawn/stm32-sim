@@ -70,7 +70,7 @@ test("inspect --json on blink: version, pins, PC as file:line, named bits", () =
 });
 
 test("run and inspect report diagnostics, in text and --json", () => {
-  const at = line("clock-off", "GPIOB->ODR ^=");
+  const at = line("clock-off", "GPIOB_ODR ^=");
   const r = sim("run", elf("clock-off"), "--for", "300ms");
   assert.equal(r.code, 0, r.stderr);
   assert.ok(
