@@ -215,6 +215,18 @@ it as all rights reserved and don't copy it.
   patterns" fault test exercises.
 - Pin signal types already include `analog`, which fits the analog extension later.
 
+**Our art (T29), in `src/ui/art/`.** Each piece is `{ svg, width, height, pins }`.
+
+- One SVG unit is 0.01 in, so the 0.1 in pitch is 10 units. To match wokwi pinInfo
+  (CSS px, 0.1 in = 9.6 px), scale by 0.96.
+- A part's `pins` keys are its pin names from the datasheet: TC74 `SDA`, `SCLK`,
+  `VDD`, `GND`; MCP23017 `GPA0`…, `SCK`, `SDA`, `A0`…, `RESET`. NC pins are drawn
+  but have no key. `partArt` maps part type to art.
+- NUCLEO-G031K8 pins are keyed by header position (`CN3.1`…`CN4.15`), each with
+  its `signal` (`PB6`, `GND`, `3V3`, …) from UM2591 Rev 1 Table 9.
+- Breadboard holes are `a1`…`j30` plus rails `tp`/`tn`/`bp`/`bn` 1–25. `groups`
+  lists the holes joined inside the board.
+
 ## 4. Register data: SVD, converted to checked-in JSON
 
 **Decision.** Take every register name, address, reset value and named bitfield from
