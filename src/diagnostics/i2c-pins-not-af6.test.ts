@@ -59,11 +59,11 @@ test("neither line routed: names what the pins wired to the TC74 are instead", (
     {
       severity: "warning",
       message:
-        "I2C1->CR2.START was set, but I2C1_SCL and I2C1_SDA aren't on any pin, so nothing " +
+        "I2C1_CR2 (0x40005404) bit 13 START was set, but I2C1_SCL and I2C1_SDA aren't on any pin, so nothing " +
         "reaches the bus. A pin carries an I2C signal only in alternate-function mode " +
         "(MODER = 2) with the right AF number (RM0444 §7.3.2): " +
-        "PB6 needs AF6 but is an output (GPIOB->MODER.MODE6 = 1); " +
-        "PB7 needs AF6 but is AF1 (GPIOB->AFRL.AFSEL7 = 1)",
+        "PB6 needs AF6 but is an output (GPIOB_MODER (0x50000400) bits 13:12 MODE6 = 1); " +
+        "PB7 needs AF6 but is AF1 (GPIOB_AFRL (0x50000420) bits 31:28 AFSEL7 = 1)",
       periph: "I2C1",
       reg: "CR2",
     },
@@ -74,12 +74,12 @@ test("SDA missing and nothing wired: every pin that could carry SDA", () => {
   // PB6 is SCL (AF6); PB9 is in AF mode with AF0.
   const b = board({ MODER: 0xfffbefff, AFRL: 0x06000000, AFRH: 0 });
   const [d] = i2cPinsNotAf6.check(start, b);
-  assert.match(d.message, /^I2C1->CR2\.START was set, but I2C1_SDA isn't on/);
+  assert.match(d.message, /^I2C1_CR2 \(0x40005404\) bit 13 START was set, but I2C1_SDA isn't on/);
   assert.ok(
     d.message.endsWith(
-      ": PA10 needs AF6 but is analog (GPIOA->MODER.MODE10 = 3); " +
-        "PB7 needs AF6 but is analog (GPIOB->MODER.MODE7 = 3); " +
-        "PB9 needs AF6 but is AF0 (GPIOB->AFRH.AFSEL9 = 0)",
+      ": PA10 needs AF6 but is analog (GPIOA_MODER (0x50000000) bits 21:20 MODE10 = 3); " +
+        "PB7 needs AF6 but is analog (GPIOB_MODER (0x50000400) bits 15:14 MODE7 = 3); " +
+        "PB9 needs AF6 but is AF0 (GPIOB_AFRH (0x50000424) bits 7:4 AFSEL9 = 0)",
     ),
     d.message,
   );

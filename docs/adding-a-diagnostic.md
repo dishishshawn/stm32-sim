@@ -4,7 +4,7 @@ A diagnostic rule explains a likely mistake in the firmware, at the line that
 made it:
 
 ```
-firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
+firmware/clock-off/main.c:25: warning: wrote GPIOB_ODR (0x50000414) while RCC_IOPENR (0x40021034) bit 1 GPIOBEN = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
 ```
 
 A rule only watches. It never changes what the simulation does: the
@@ -56,11 +56,12 @@ A rule is one object of type `Rule`, from `src/diagnostics/rule.ts`.
 // §32.9.5 says TIMINGR must be configured with PE = 0; the simulator ignores
 // such a write, silently (docs/decisions.md §12), so the timing never changes.
 import { PE } from "./i2c-pins.ts";
+import { fieldName, regName } from "./names.ts";
 import type { Rule } from "./rule.ts";
 
 export const timingrWhilePe: Rule = {
   id: "timingr-while-pe",
-  check(e, { regs }) {
+  check(e, { chip, regs }) {
     if (
       e.kind !== "reg" ||
       e.op !== "write" ||
@@ -76,7 +77,8 @@ export const timingrWhilePe: Rule = {
       {
         severity: "warning",
         message:
-          `wrote ${p}->TIMINGR while ${p}->CR1.PE = 1, so the write was ignored: ` +
+          `wrote ${regName(chip, p, "TIMINGR")} while ${fieldName(chip, p, "CR1", "PE")} = 1, ` +
+          "so the write was ignored: " +
           "TIMINGR must be configured when the I2C is disabled, PE = 0 (RM0444 §32.9.5). " +
           "Write TIMINGR before setting PE, or clear PE first",
         periph: p,
@@ -149,7 +151,7 @@ What to know about events:
   `"TXDR"`, `"AFRL"`, as `docs/adding-a-peripheral.md` step 2 describes.
   Match a family with `e.periph.startsWith("I2C")`, so I2C2 is covered once
   it is simulated.
-- **Events come fast.** Firmware polling `I2C1->ISR` makes a `reg` event per
+- **Events come fast.** Firmware polling `I2C1_ISR` makes a `reg` event per
   pass. Test `e.kind` and the register first, and return `[]` at once.
 
 ## 3. Copy the templates
@@ -168,6 +170,7 @@ marked `// TEMPLATE:`:
 
 | File              | In `templates/`                                     | In `src/diagnostics/`                              |
 | ----------------- | --------------------------------------------------- | -------------------------------------------------- |
+| `my-rule.ts`      | `from "../src/diagnostics/names.ts"`                | `from "./names.ts"`                                |
 | `my-rule.ts`      | `from "../src/diagnostics/rule.ts"`                 | `from "./rule.ts"`                                 |
 | `my-rule.test.ts` | `from "../src/chips/stm32g031k8.ts"`                | `from "../chips/stm32g031k8.ts"`                   |
 | `my-rule.test.ts` | `from "../src/diagnostics/rule.ts"` (2 lines)       | `from "./rule.ts"`                                 |
@@ -189,7 +192,7 @@ with your rule's facts, and delete the comment.
 The template's:
 
 ```ts
-  check(e, { regs }) {
+  check(e, { chip, regs }) {
     // check() runs on every event, so return [] fast for the ones that aren't
     // yours. TEMPLATE: the event your rule is about.
     if (
@@ -218,7 +221,9 @@ The template's:
   one run to the next. Repeats are counted for you. If you need history, read
   it from the registers: the state a peripheral keeps is the history the
   hardware has.
-- **Reuse what's there.** `startRequested()` (a START set with PE = 1),
+- **Reuse what's there.** `regName()` and `fieldName()`, in
+  `src/diagnostics/names.ts`, name registers and fields in every message
+  (step 5). `startRequested()` (a START set with PE = 1),
   `i2cLines()` (which pins can carry an I2C's SCL and SDA, and which do),
   `gpioOf()` and `PE` are in `src/diagnostics/i2c-pins.ts`;
   `alternateFunction()` is in `src/peripherals/gpio.ts`. Bit positions are
@@ -236,15 +241,27 @@ The run is unaffected, but that rule's findings may be missing`) and goes
 The learner reads it next to their own line of code, so it names what they
 wrote and says what to do:
 
-- **The exact register and bit, in CMSIS names**, as the learner's code
-  spells them: `I2C1->ISR.TXE (bit 0)`, `RCC->IOPENR.GPIOBEN (bit 1)`,
-  `GPIOB->MODER.MODE6 = 3`. Field names are the register JSON's, which follow
-  the CMSIS header (`docs/decisions.md` §4): `GPIOBEN`, not the SVD's
-  `IOPBEN`.
+- **The exact register and bit, as the learner `#define`s them, with the
+  address.** Exam-style firmware has no ST header: it defines each register
+  by address, `#define RCC_IOPENR (*(volatile uint32_t *)0x40021034U)`, and
+  the address shows a wrong `#define`. Always build the name with the helpers
+  in `src/diagnostics/names.ts`, never by hand:
+  - `regName(chip, "GPIOB", "MODER")` gives `GPIOB_MODER (0x50000400)`;
+  - `fieldName(chip, "RCC", "IOPENR", "GPIOBEN")` gives
+    `RCC_IOPENR (0x40021034) bit 1 GPIOBEN`, and a field wider than a bit is
+    `GPIOB_MODER (0x50000400) bits 13:12 MODE6`. Add its value after it where
+    the message needs it: `… MODE6 = 3`.
+
+  `chip` is `board.chip`. Names and addresses come from the register JSON,
+  whose field names follow the CMSIS header (`docs/decisions.md` §4):
+  `GPIOBEN`, not the SVD's `IOPBEN`. After the first mention, a bare name is
+  fine: "TXDR can be written only when TXE = 1".
+
 - **What happened** in the simulation: "so the write was ignored", "so
   nothing reaches the bus".
 - **RM0444's section** for the rule the firmware broke: `(RM0444 §32.9.11)`.
-- **The fix**: "Wait for I2C1->ISR.TXIS = 1 before writing each byte".
+- **The fix**: "Wait for I2C1_ISR (0x40005418) bit 1 TXIS = 1 before
+  writing each byte".
 - **The same text every time.** Findings with the same rule and message are
   one diagnostic with a count. Don't put the cycle, the value written, or
   anything else that changes between repeats into the message, or a mistake
@@ -253,7 +270,7 @@ wrote and says what to do:
 The template's message:
 
 ```
-wrote I2C1->TXDR while I2C1->ISR.TXE (bit 0) = 0, so the write was ignored and that byte never goes out: TXDR can be written only when TXE = 1 (RM0444 §32.9.11). Wait for I2C1->ISR.TXIS = 1 before writing each byte
+wrote I2C1_TXDR (0x40005428) while I2C1_ISR (0x40005418) bit 0 TXE = 0, so the write was ignored and that byte never goes out: TXDR can be written only when TXE = 1 (RM0444 §32.9.11). Wait for I2C1_ISR (0x40005418) bit 1 TXIS = 1 before writing each byte
 ```
 
 The rest of the `Finding`:
@@ -357,9 +374,9 @@ just sim run build/faults/gpio-clock.elf --circuit firmware/faults/gpio-clock/ci
 
 ```
 diagnostics
-  firmware/faults/gpio-clock/main.c:118: warning: read GPIOB->OTYPER while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the read returned 0 [gpio-clock-off]
+  firmware/faults/gpio-clock/main.c:118: warning: read GPIOB_OTYPER (0x50000404) while RCC_IOPENR (0x40021034) bit 1 GPIOBEN = 0 — GPIOB's clock is off, so the read returned 0 [gpio-clock-off]
   …
-  firmware/faults/gpio-clock/main.c:84: warning: I2C1->CR2.START was set, but I2C1_SCL and I2C1_SDA aren't on any pin, so nothing reaches the bus. … [i2c-pins-not-af6]
+  firmware/faults/gpio-clock/main.c:84: warning: I2C1_CR2 (0x40005404) bit 13 START was set, but I2C1_SCL and I2C1_SDA aren't on any pin, so nothing reaches the bus. … [i2c-pins-not-af6]
 ```
 
 Your rule's lines end in `[my-rule]`, on firmware that makes the mistake.
@@ -368,8 +385,8 @@ Add `--json` for the same as JSON (`docs/cli.md`).
 ## Checklist
 
 - [ ] `src/diagnostics/<rule-id>.ts`: one event, read-only, no state, a
-      message with the register and bit in CMSIS names, an RM0444 section and
-      the fix.
+      message naming the register and bit with `regName()`/`fieldName()`, an
+      RM0444 section and the fix.
 - [ ] No `TEMPLATE:` comments left, and no `i2cTxdrNotEmpty` or
       `i2c-txdr-not-empty`.
 - [ ] `src/diagnostics/<rule-id>.test.ts`: the finding word for word, the

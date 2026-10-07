@@ -35,8 +35,8 @@ function board(levels: Record<string, Level>, moder = 0xffffafff) {
 }
 
 const PREFIX =
-  "I2C1->CR2.START was set while the bus isn't free, so START never goes out and " +
-  'ISR.BUSY stays 1 (RM0444 §32.9.2: START is sent "once the bus is free"): ';
+  "I2C1_CR2 (0x40005404) bit 13 START was set while the bus isn't free, so START never goes out and " +
+  'I2C1_ISR (0x40005418) bit 15 BUSY stays 1 (RM0444 §32.9.2: START is sent "once the bus is free"): ';
 
 test("both lines floating: no pull-ups", () => {
   const b = board({ "mcu.I2C1_SCL": "floating", "mcu.I2C1_SDA": "floating" });

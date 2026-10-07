@@ -6,19 +6,21 @@
 import type { BoardView } from "../engine/engine.ts";
 import { alternateFunction } from "../peripherals/gpio.ts";
 import { gpioOf, i2cLines, startRequested } from "./i2c-pins.ts";
+import { fieldName } from "./names.ts";
 import type { Rule } from "./rule.ts";
 
 const MODES = ["an input", "an output", "", "analog"];
 
-/** E.g. "PB6 needs AF6 but is analog (GPIOB->MODER.MODE6 = 3)". */
-function describe({ regs }: BoardView, pin: string, af: number): string {
+/** E.g. "PB6 needs AF6 but is analog (GPIOB_MODER (0x50000400) bits 13:12 MODE6 = 3)". */
+function describe({ chip, regs }: BoardView, pin: string, af: number): string {
   const [port, n] = gpioOf(pin);
   const mode = (regs[port].MODER >>> (2 * n)) & 3;
   const got = alternateFunction(regs[port], n);
+  const afr = n < 8 ? "AFRL" : "AFRH";
   const is =
     got === undefined
-      ? `${MODES[mode]} (${port}->MODER.MODE${n} = ${mode})`
-      : `AF${got} (${port}->${n < 8 ? "AFRL" : "AFRH"}.AFSEL${n} = ${got})`;
+      ? `${MODES[mode]} (${fieldName(chip, port, "MODER", `MODE${n}`)} = ${mode})`
+      : `AF${got} (${fieldName(chip, port, afr, `AFSEL${n}`)} = ${got})`;
   return `${pin} needs AF${af} but is ${is}`;
 }
 
@@ -51,7 +53,7 @@ export const i2cPinsNotAf6: Rule = {
       {
         severity: "warning",
         message:
-          `${e.periph}->CR2.START was set, but ${signals.join(" and ")} ` +
+          `${fieldName(board.chip, e.periph, "CR2", "START")} was set, but ${signals.join(" and ")} ` +
           `${signals.length > 1 ? "aren't" : "isn't"} on any pin, so nothing reaches the bus. ` +
           "A pin carries an I2C signal only in alternate-function mode (MODER = 2) " +
           `with the right AF number (RM0444 §7.3.2): ${shown.join("; ")}`,

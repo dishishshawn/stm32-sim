@@ -5,6 +5,7 @@
 // simulator's bus works one transaction at a time and never shows that fight
 // (docs/decisions.md §7), so this diagnostic is the only sign of it.
 import { gpioOf, i2cLines, startRequested } from "./i2c-pins.ts";
+import { fieldName } from "./names.ts";
 import type { Rule } from "./rule.ts";
 
 export const i2cPinPushPull: Rule = {
@@ -19,7 +20,8 @@ export const i2cPinPushPull: Rule = {
           {
             severity: "warning" as const,
             message:
-              `${pin} is ${e.periph}_${name} (AF${af}) but push-pull (${port}->OTYPER.OT${n} = 0): ` +
+              `${pin} is ${e.periph}_${name} (AF${af}) but push-pull ` +
+              `(${fieldName(board.chip, port, "OTYPER", `OT${n}`)} = 0): ` +
               `I2C lines must be open drain (OT${n} = 1), so devices only ever pull them low. ` +
               "Push-pull drives the line high while a target pulls it low (an ACK, or clock " +
               "stretching). The simulator doesn't show that fight; on a real board it can lose " +

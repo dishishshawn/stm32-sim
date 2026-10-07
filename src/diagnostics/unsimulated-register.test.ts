@@ -40,7 +40,7 @@ test("an unsimulated register: one diagnostic, counting every access", () => {
       rule: "unsimulated-register",
       severity: "info",
       message:
-        "I2C1->OAR2: this register isn't simulated yet; it reads back what was written",
+        "I2C1_OAR2 (0x4000540c): this register isn't simulated yet; it reads back what was written",
       periph: "I2C1",
       reg: "OAR2",
       count: 3,

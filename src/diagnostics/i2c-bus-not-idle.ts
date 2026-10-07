@@ -5,6 +5,7 @@
 // i2c-pins-not-af6's.
 import type { Level } from "../engine/nets.ts";
 import { i2cLines, startRequested } from "./i2c-pins.ts";
+import { fieldName } from "./names.ts";
 import type { Rule } from "./rule.ts";
 
 const CAUSE: Readonly<Record<Exclude<Level, "high">, string>> = {
@@ -31,12 +32,14 @@ export const i2cBusNotIdle: Rule = {
         `${l.name} (${l.pins.flatMap((p) => (p.routed ? [p.pin] : [])).join(", ")}) is ${l.level}`,
     );
     const causes = [...new Set(bad.map((l) => CAUSE[l.level]))];
+    const { chip } = board;
     return [
       {
         severity: "warning",
         message:
-          `${e.periph}->CR2.START was set while the bus isn't free, so START never goes out ` +
-          `and ISR.BUSY stays 1 (RM0444 §32.9.2: START is sent "once the bus is free"): ` +
+          `${fieldName(chip, e.periph, "CR2", "START")} was set while the bus isn't free, ` +
+          `so START never goes out and ${fieldName(chip, e.periph, "ISR", "BUSY")} stays 1 ` +
+          `(RM0444 §32.9.2: START is sent "once the bus is free"): ` +
           `${states.join(" and ")}. ${causes.join(". ")}`,
         periph: e.periph,
         reg: "CR2",

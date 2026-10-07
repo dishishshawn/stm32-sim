@@ -7,6 +7,7 @@
 // §32.9.11: TXDATA "can be written only when TXE = 1", and I2C1 ignores such
 // a write (src/peripherals/i2c.ts), so that byte never goes out. The usual
 // cause is writing the next byte without waiting for TXIS.
+import { fieldName, regName } from "../src/diagnostics/names.ts"; // TEMPLATE: in src/diagnostics/ this is "./names.ts"
 import type { Rule } from "../src/diagnostics/rule.ts"; // TEMPLATE: in src/diagnostics/ this is "./rule.ts"
 
 /** I2C_ISR.TXE (RM0444 §32.9.7). TEMPLATE: the bits your rule reads. */
@@ -16,7 +17,7 @@ const TXE = 1 << 0;
 // kebab-case, the file's name, and what `sim` prints in [brackets].
 export const i2cTxdrNotEmpty: Rule = {
   id: "i2c-txdr-not-empty",
-  check(e, { regs }) {
+  check(e, { chip, regs }) {
     // check() runs on every event, so return [] fast for the ones that aren't
     // yours. TEMPLATE: the event your rule is about.
     if (
@@ -36,13 +37,15 @@ export const i2cTxdrNotEmpty: Rule = {
     return [
       {
         severity: "warning",
-        // The exact register and bit (CMSIS names), what happened, RM0444's
-        // section, then the fix. Nothing that changes between repeats (the
+        // The exact register and bit, named by regName()/fieldName() as the
+        // learner #defines them, with the address; what happened; RM0444's
+        // section; then the fix. Nothing that changes between repeats (the
         // byte, the cycle): an identical message is counted, not repeated.
         message:
-          `wrote ${p}->TXDR while ${p}->ISR.TXE (bit 0) = 0, so the write was ignored ` +
-          "and that byte never goes out: TXDR can be written only when TXE = 1 " +
-          `(RM0444 §32.9.11). Wait for ${p}->ISR.TXIS = 1 before writing each byte`,
+          `wrote ${regName(chip, p, "TXDR")} while ${fieldName(chip, p, "ISR", "TXE")} = 0, ` +
+          "so the write was ignored and that byte never goes out: TXDR can be written only " +
+          `when TXE = 1 (RM0444 §32.9.11). Wait for ${fieldName(chip, p, "ISR", "TXIS")} = 1 ` +
+          "before writing each byte",
         periph: p,
         reg: "TXDR",
       },
