@@ -17,12 +17,14 @@ export type Art = {
 };
 
 /**
- * MCP23017 SPDIP pin names, pin 1 first. Microchip DS20001952C, Table 2-1
- * "Pinout description" (SPDIP column). Pin 12 is "SCK" in the datasheet.
+ * MCP23017 SPDIP pin names, pin 1 first, as src/parts/mcp23017.ts declares
+ * them. Microchip DS20001952C, Table 2-1 "Pinout description" (SPDIP column).
+ * The datasheet calls pin 12 "SCK" and pins 11 and 14 "NC"; the part names
+ * them SCL, NC11 and NC14 (pin names must be unique).
  */
 const MCP23017_PINS = [
   ...["GPB0", "GPB1", "GPB2", "GPB3", "GPB4", "GPB5", "GPB6", "GPB7"],
-  ...["VDD", "VSS", "NC", "SCK", "SDA", "NC", "A0", "A1", "A2", "RESET"],
+  ...["VDD", "VSS", "NC11", "SCL", "SDA", "NC14", "A0", "A1", "A2", "RESET"],
   ...["INTB", "INTA", "GPA0", "GPA1", "GPA2", "GPA3", "GPA4", "GPA5"],
   ...["GPA6", "GPA7"],
 ];

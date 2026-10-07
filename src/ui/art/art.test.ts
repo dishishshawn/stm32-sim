@@ -52,16 +52,16 @@ test("dip28: pins 1–28 run counter-clockwise from pin 1 at the bottom left", (
   assert.deepEqual(pins["14"], { x: 140, y: 36 });
   assert.deepEqual(pins["15"], { x: 140, y: 4 });
   assert.deepEqual(pins["28"], { x: 10, y: 4 });
-  // MCP23017: NC pins 11 and 14 aren't connectable.
+  // Every pin gets a coordinate, including NC11/NC14 (wiring to them does nothing).
   assert.deepEqual(partArt.mcp23017.pins.SDA, pins["13"]);
-  assert.equal(Object.keys(partArt.mcp23017.pins).length, 26);
+  assert.equal(Object.keys(partArt.mcp23017.pins).length, 28);
 });
 
 test("tc74: TO-220 pin order is NC, SDA, GND, SCLK, VDD", () => {
   const order = Object.entries(tc74.pins)
     .sort(([, a], [, b]) => a.x - b.x)
     .map(([pin]) => pin);
-  assert.deepEqual(order, ["SDA", "GND", "SCLK", "VDD"]);
+  assert.deepEqual(order, ["NC", "SDA", "GND", "SCLK", "VDD"]);
 });
 
 test("nucleo: the map covers all 30 header positions exactly once", () => {

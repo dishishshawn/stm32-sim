@@ -16,7 +16,7 @@ let leads = "";
 let text = "";
 NAMES.forEach((name, i) => {
   const x = 5 + 10 * i;
-  if (name !== "NC") pins[name] = { x, y: 65 };
+  pins[name] = { x, y: 65 };
   leads += `<rect x="${x - 1.2}" y="49" width="2.4" height="19"/>`;
   text += `<text x="${x}" y="46" text-anchor="middle">${name}</text>`;
 });

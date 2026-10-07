@@ -9,7 +9,7 @@ const H = 40;
 
 /**
  * `label` is printed on the body. `names[n - 1]` names pin n and is its key in
- * `pins` (default: "1".."28"). Pins named "NC" are drawn but not connectable.
+ * `pins` (default: "1".."28"). Every pin gets a coordinate, NC included: like a real NC pin, wiring to it does nothing.
  */
 export function dip28(
   label: string,
@@ -22,7 +22,7 @@ export function dip28(
     const bottom = i < 14;
     const x = bottom ? 10 + 10 * i : 10 + 10 * (27 - i);
     const y = bottom ? 36 : 4;
-    if (name !== "NC") pins[name] = { x, y };
+    pins[name] = { x, y };
     legs += `<rect x="${x - 1.5}" y="${bottom ? 32 : 1}" width="3" height="7" rx="0.5"/>`;
     // Read bottom-to-top, starting at the pin's edge of the body.
     text += bottom
