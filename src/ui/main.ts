@@ -50,7 +50,7 @@ let drawn: ((s: Snapshot) => void)[] = [];
 /** Simulated time at the last frame. A prop set at it applies at once. */
 let seconds = 0;
 /** Panels (./panels.ts) pause the run loop through this. */
-const loop = { paused: false };
+const loop = { paused: false, max: false };
 let last: number | undefined;
 /** A frame is due. The loop stops on a halt; a restart starts it again. */
 let looping = false;
@@ -89,7 +89,7 @@ function frame(now: number) {
   if (!loop.paused)
     for (
       let t = 0;
-      t < due && performance.now() - start < BUDGET_MS;
+      (loop.max || t < due) && performance.now() - start < BUDGET_MS;
       t += SLICE
     )
       engine.runFor(SLICE);
@@ -131,7 +131,7 @@ function status(s: Snapshot): string {
   if (s.halt?.kind === "lockup") return `lockup: ${s.halt.reason} (at ${s.at})`;
   if (s.halt) return `breakpoint: ${s.halt.reason} at ${s.at}`;
   if (s.fault) return `HardFault: ${s.fault.reason} at ${s.fault.at}`;
-  return "running";
+  return loop.paused ? "paused" : "running";
 }
 
 function set(id: string, name: string, value: PropValue) {

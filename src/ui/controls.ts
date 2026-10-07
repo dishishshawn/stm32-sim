@@ -4,9 +4,6 @@
 import type { Snapshot } from "../engine/engine.ts";
 import type { Ui } from "./ui.ts";
 
-/** As main.ts's frame loop: wall ms a frame may spend simulating, and simulated seconds per runFor(). */
-const BUDGET_MS = 12;
-const SLICE = 0.001;
 /** While running, the Source panel follows the PC at most this often (wall ms). */
 const FOLLOW_MS = 250;
 
@@ -26,6 +23,7 @@ export function controls(ui: Ui) {
   step.disabled = true;
   const speed = document.createElement("select");
   speed.append(new Option("real time", "realtime"), new Option("max", "max"));
+  speed.addEventListener("change", () => (ui.run.max = speed.value === "max"));
   const label = document.createElement("label");
   label.append("Speed ", speed);
   ui.toolbar.append(pause, step, label);
@@ -110,13 +108,6 @@ export function controls(ui: Ui) {
     if (ui.run.paused || s.halt || now - followed >= FOLLOW_MS) {
       followed = now;
       show(s);
-    }
-    // ponytail: max speed runs here, after main.ts's real-time share, until
-    // the frame (from its start) has spent the same budget. A `run.max` flag
-    // in main.ts's loop would replace this.
-    if (speed.value === "max" && !ui.run.paused && !s.halt) {
-      const start = document.timeline.currentTime as number;
-      while (performance.now() - start < BUDGET_MS) ui.engine.runFor(SLICE);
     }
   });
 }

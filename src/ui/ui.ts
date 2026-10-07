@@ -6,8 +6,11 @@ import type { Engine, Snapshot } from "../engine/engine.ts";
 export interface Ui {
   readonly engine: Engine;
   readonly circuit: Circuit;
-  /** Set `paused` to stop the run loop; the page keeps redrawing. */
-  readonly run: { paused: boolean };
+  /**
+   * The run loop: `paused` stops it (the page keeps redrawing); `max` runs as
+   * fast as the frame budget allows instead of keeping pace with the wall clock.
+   */
+  readonly run: { paused: boolean; max: boolean };
   /** Called with a fresh snapshot after every frame. */
   onSnapshot(fn: (s: Snapshot) => void): void;
   /** A new titled section in the side panel; returns the element to fill. */

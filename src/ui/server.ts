@@ -95,7 +95,9 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
         );
         // Named but not on this machine (the C library's): no text, rather
         // than a 404 the browser would log as an error on every step into it.
-        body = existsSync(file) ? readFileSync(file) : "";
+        // Also no text while the ELF on disk can't be read (a rebuild in
+        // progress, or a broken build): nothing to check the path against.
+        body = file && existsSync(file) ? readFileSync(file) : "";
         // ---- end T36 ----
       } else {
         res.writeHead(404, HEADERS).end();
@@ -135,9 +137,15 @@ function inside(dir: string, rest: string): string {
 // §5), read-only, and nothing else. The path must equal one of them exactly, so
 // a relative path, a ".." or any other file is not found.
 
-/** `file`, if it is one of the ELF's source files; else a not-found error. */
-function sourceFile(elf: Uint8Array, file: string | null): string {
-  if (!file || !isAbsolute(file) || !loadElf(elf).sources().includes(file))
+/** `file`, if it is one of the ELF's source files; null if the ELF on disk can't be read; else a not-found error. */
+function sourceFile(elf: Uint8Array, file: string | null): string | null {
+  let sources: string[];
+  try {
+    sources = loadElf(elf).sources();
+  } catch {
+    return null; // the ELF on disk isn't readable now: serve nothing
+  }
+  if (!file || !isAbsolute(file) || !sources.includes(file))
     throw Object.assign(new Error("not found"), { code: "ENOENT" });
   return file;
 }
