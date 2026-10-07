@@ -850,10 +850,10 @@ with the TC74 (variant A0) and two common-cathode displays already placed.
 
 ### T44: Breadboard keyboard use and moving
 
-- [ ] A breadboard is one tab stop, and the arrow keys move between its holes (roving
+- [x] A breadboard is one tab stop, and the arrow keys move between its holes (roving
       tabindex). Today it is 400 tab stops.
-- [ ] Moving a part with the arrow keys seats it in holes as dropping it does.
-- [ ] Moving a breadboard carries the parts plugged into it.
+- [x] Moving a part with the arrow keys seats it in holes as dropping it does.
+- [x] Moving a breadboard carries the parts plugged into it.
 
 **Verify:** a UI test. **Blocked by:** T32. **Size:** S.
 
