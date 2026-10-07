@@ -809,7 +809,7 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T34: Register view
 
-- [ ] Per peripheral, show live register values with the named bits taken from the
+- [x] Per peripheral, show live register values with the named bits taken from the
       registers JSON. Changed bits are highlighted, and unsimulated registers are
       marked as such.
 
