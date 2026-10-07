@@ -72,6 +72,9 @@ let circuit: Circuit;
 let pending: string | undefined;
 /** pinSpots() by part type. */
 const spotsOf = new Map<string, readonly Spot[]>();
+/** The id of the part selected on the canvas, and the panels told of it (ui.onSelect). */
+let selected: string | undefined;
+const selects: ((id: string | undefined) => void)[] = [];
 
 try {
   const [elf, text] = await Promise.all([
@@ -138,8 +141,17 @@ function mountPanels() {
       return body;
     },
     toolbar: $("toolbar"),
+    onSelect: (fn) => void selects.push(fn),
+    change,
   };
   for (const mount of panels) mount(ui);
+}
+
+/** Tells the panels which part is selected, if that changed. */
+function select(id: string | undefined) {
+  if (id === selected) return;
+  selected = id;
+  for (const fn of selects) fn(id);
 }
 
 /** As `sim run` words it. */
@@ -388,6 +400,7 @@ function render() {
   });
   fit();
   drawWires();
+  if (!circuit.parts.some((p) => p.id === selected)) select(undefined);
 }
 
 /** Puts each wire between its pins' spots. A wire to a pin that isn't drawn is hidden. */
@@ -699,6 +712,9 @@ function mountEditing() {
     });
   });
   canvas.addEventListener("focusin", (e) => {
+    // A part is selected by focusing it, or anything on it (a click focuses it).
+    const fig = (e.target as Element).closest<HTMLElement>("figure[data-type]");
+    if (fig) select(fig.dataset.part);
     const pin = (e.target as Element).closest<HTMLElement>(".pin-target");
     if (pin && pending !== undefined) band(spot(pin.dataset.endpoint!));
   });

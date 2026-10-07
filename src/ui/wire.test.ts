@@ -3,44 +3,23 @@
 // rails, and a part dropped on it is plugged in. Each test writes its own
 // circuit to a temp file, so Save never touches the repo's.
 import { test } from "node:test";
-import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { setTimeout as sleep } from "node:timers/promises";
-import { digits, open, root, until } from "./harness.ts";
-
-/** `circuit` in a temp file. */
-function write(t: TestContext, circuit: object): string {
-  const dir = mkdtempSync(join(tmpdir(), "sim-wire-"));
-  t.after(() => rmSync(dir, { recursive: true }));
-  const file = join(dir, "circuit.json");
-  writeFileSync(file, JSON.stringify(circuit));
-  return file;
-}
-
-const note = (page: Page) => page.textContent("#edit");
-const pin = (page: Page, endpoint: string) =>
-  page.locator(`[data-endpoint="${endpoint}"]`).first();
-
-/** Clicks one pin, then the other, and waits for the restart. */
-async function wire(page: Page, a: string, b: string) {
-  await pin(page, a).click();
-  await pin(page, b).click();
-  await until(
-    () => note(page),
-    `wired ${a} to ${b}: simulation restarted`,
-    `the header after wiring ${a} to ${b}`,
-  );
-}
-
-async function save(page: Page, file: string) {
-  await page.click("#save");
-  await until(() => note(page), "saved", "the header after Save");
-  return JSON.parse(readFileSync(file, "utf8"));
-}
+import {
+  digits,
+  note,
+  open,
+  pin,
+  root,
+  save,
+  setProp,
+  until,
+  wire,
+  write,
+} from "./harness.ts";
 
 const lit = (page: Page) =>
   page.evaluate(
@@ -49,36 +28,41 @@ const lit = (page: Page) =>
         .value,
   );
 
-test("the thermometer rebuilt in the page, by placing parts and wiring every pin, runs as T21's: 22, then 71 after a press", async (t) => {
-  // The parts whose props the page can't set yet (TC74 A0, common-cathode
-  // displays) start placed; the rest come from the palette. No wires.
-  const thermometer = JSON.parse(
+test("the thermometer rebuilt in the page, by placing parts, setting their props and wiring every pin, runs as T21's: 22, then 71 after a press", async (t) => {
+  // From an empty circuit: every part from the palette, its props (TC74 A0
+  // at 22 °C, common-cathode displays, 4.7 kΩ) set in the Part panel, then
+  // every wire clicked in.
+  const thermometer: {
+    parts: { id: string; type: string; props: Record<string, unknown> }[];
+    wires: string[][];
+  } = JSON.parse(
     readFileSync(join(root, "firmware/thermometer/circuit.json"), "utf8"),
   );
-  const placed = ["temp", "tens", "units"];
-  const file = write(t, {
-    chip: "stm32g031k8",
-    parts: thermometer.parts.filter((p: { id: string }) =>
-      placed.includes(p.id),
-    ),
-    wires: [],
-  });
+  const file = write(t, { chip: "stm32g031k8", parts: [], wires: [] });
   const { page, problems } = await open(t, "thermometer", file);
-  for (const type of ["mcp23017", "pushbutton", "resistor", "resistor"])
-    await page.getByRole("button", { name: type, exact: true }).click();
-  await page.waitForSelector('[data-part="resistor2"]');
   const ids: Record<string, string> = {
+    temp: "tc74_1",
     io: "mcp23017_1",
+    tens: "segment1",
+    units: "segment2",
     btn: "pushbutton1",
     r_scl: "resistor1",
     r_sda: "resistor2",
   };
+  for (const { type } of thermometer.parts)
+    await page.getByRole("button", { name: type, exact: true }).click();
+  for (const id of Object.values(ids))
+    await page.waitForSelector(`[data-part="${id}"]`);
+  for (const { id, props } of thermometer.parts)
+    for (const [name, value] of Object.entries(props))
+      await setProp(page, ids[id], name, String(value));
   const rename = (e: string) => e.replace(/^[^.]+/, (id) => ids[id] ?? id);
-  const wires = thermometer.wires.map((w: string[]) => w.map(rename));
+  const wires = thermometer.wires.map((w) => w.map(rename));
   assert.equal(wires.length, 34);
   for (const [a, b] of wires) await wire(page, a, b);
 
-  await until(() => digits(page), "22", "the digits at 22 °C");
+  const shown = () => digits(page, [ids.tens, ids.units]);
+  await until(shown, "22", "the digits at 22 °C");
   // Held for 200 ms: the firmware looks at the button every 20 ms.
   await page
     .locator('[data-part="pushbutton1"] wokwi-pushbutton button')
@@ -86,7 +70,7 @@ test("the thermometer rebuilt in the page, by placing parts and wiring every pin
   await page.keyboard.down("Space");
   await sleep(200);
   await page.keyboard.up("Space");
-  await until(() => digits(page), "71", "the digits after one press (°F)");
+  await until(shown, "71", "the digits after one press (°F)");
 
   // Each wire is drawn, coloured by its net: the rails' are low and high.
   const level = (i: number) =>
@@ -94,8 +78,13 @@ test("the thermometer rebuilt in the page, by placing parts and wiring every pin
   assert.equal(await level(3), "low"); // temp.GND to GND
   assert.equal(await level(2), "high"); // temp.VDD to 3V3
 
-  // Saved as pairs, in the order drawn: the file's own order.
-  const saved = await save(page, file);
+  // Saved with the thermometer's props, and its wires as pairs in the order
+  // drawn: the file's own order.
+  const saved: typeof thermometer = await save(page, file);
+  assert.deepEqual(
+    Object.fromEntries(saved.parts.map((p) => [p.id, p.props])),
+    Object.fromEntries(thermometer.parts.map((p) => [ids[p.id], p.props])),
+  );
   assert.deepEqual(saved.wires, wires);
   assert.equal(await page.textContent("#run"), "running");
   assert.deepEqual(problems, []);

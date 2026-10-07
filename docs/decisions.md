@@ -1082,16 +1082,45 @@ part.
     user plugs a part in with wires to holes.
   - Moving a breadboard doesn't carry its parts: they stay, and come
     unplugged. Moving it back plugs them in again.
-- **Tests:** `src/ui/wire.test.ts`. The thermometer rebuilt in the page:
-  TC74 (A0) and the two common-cathode displays start placed, because the
-  page has no prop editor; the MCP23017, button and both resistors come from
-  the palette, and all 34 wires are clicked in. It shows 22, then 71 after a
-  press, and Save writes the 34 wires in the order drawn. Then Escape, the
+- **Tests:** `src/ui/wire.test.ts`. The thermometer rebuilt in the page
+  from an empty circuit: all seven parts from the palette, their props set in
+  the Part panel (T43, below), and all 34 wires clicked in. It shows 22, then
+  71 after a press, and Save writes the thermometer's props and the 34 wires
+  in the order drawn. Then Escape, the
   keyboard, wire ends at the pins' centres following an arrow-key move, and
   click-then-Delete on a wire, with blink. Then a breadboard from the
   palette, an LED dropped on it and plugged into a9/a10, PA0 through strip
   e10 and the − rail to GND: it blinks; dragged off, the two plugs go.
-  About 15 s for the three.
+  About 20 s for the three (the rebuild 16 s: 47 restarts).
+
+**Props (T43).** `src/ui/props.ts`, a "Part" panel, first in the sidebar.
+
+- Selecting a part (focusing it or anything on it; a click focuses it)
+  shows its id and type as a `<fieldset>`'s legend and one labelled native
+  control per prop, from its `PropSpec`: a `<select>` for `options`, a number
+  input with the spec's `min` and `max` (`step="any"`), a checkbox for a
+  boolean, a text input for a free string.
+- A control's `change` (Enter or leaving a number field) checks the value
+  with `propError()`. A bad one is refused: the reason shows under the form
+  in a `role="alert"` paragraph, the field gets `aria-invalid`, and nothing
+  restarts. A good one goes through `change()`: the simulation restarts and
+  Save writes it. A value equal to the default is deleted from `props`, so
+  the file holds only what differs, as a hand-written one does. The part
+  object is replaced, not mutated, so `change()`'s undo works.
+- The TC74 slider and the push-button stay live controls (`setPropAt`, not
+  saved). The form shows the circuit's value, so after the slider moves the
+  two differ until the next restart.
+- Two hooks on `Ui` for it: `onSelect(fn)` (main.ts calls it from the
+  canvas's `focusin`, and with `undefined` when the part is removed) and
+  `change(edit)`, main.ts's own.
+- **Tests:** `src/ui/props.test.ts`. A TC74 from the palette, wired to
+  tc74-read's pull-ups: at A5 the trace shows `ADDR 0x48 W  NACK`, set to A0
+  `ADDR 0x48 W  ACK`; 200 °C is refused with its message; Save writes
+  `{ "variant": "A0" }` and a reload shows A0. A 7-segment from the palette,
+  set to cathode, each segment on a rail and its common on GND, lights
+  `11011010`; set to anode it is dark, and with its common moved to 3V3 it
+  lights `00100101`. A common-anode display's common goes to the high rail,
+  so the prop alone can't invert the lit segments. About 9 s for the two.
 
 **Headless UI tests: `playwright-core` driven from `node:test`.**
 
@@ -1121,7 +1150,8 @@ part.
 **Panels (added before T31–T36).** A panel is one file in `src/ui/`, registered in
 `src/ui/panels.ts`. It gets a `Ui` (`src/ui/ui.ts`): the engine, the circuit, a
 `run.paused` flag the frame loop respects, `onSnapshot(fn)`, `panel(title)` for its own
-section in the right-hand sidebar, and the header `toolbar` for run controls. That way
+section in the right-hand sidebar, the header `toolbar` for run controls, and (T43)
+`onSelect(fn)` and `change(edit)`. That way
 panels can be built in parallel without editing `main.ts`. Only placing parts and
 wires (T31, T32) change `main.ts`'s rendering.
 
