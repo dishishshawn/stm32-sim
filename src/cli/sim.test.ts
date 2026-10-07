@@ -61,9 +61,9 @@ test("inspect --json on blink: version, pins, PC as file:line, named bits", () =
   assert.equal(out.status, "completed");
   assert.ok(["low", "high"].includes(out.pins.PA0));
   assert.match(out.at, /^firmware\/blink\/main\.c:\d+$/);
-  // MODER0 = 01: PA0 is an output.
-  assert.equal(out.registers.GPIOA.MODER.fields.MODER0, 1);
-  assert.equal(out.registers.RCC.IOPENR.fields.IOPAEN, 1);
+  // MODE0 = 01: PA0 is an output.
+  assert.equal(out.registers.GPIOA.MODER.fields.MODE0, 1);
+  assert.equal(out.registers.RCC.IOPENR.fields.GPIOAEN, 1);
   assert.deepEqual(out.i2c, []);
   assert.deepEqual(out.diagnostics, []);
   assert.deepEqual(out.unsimulated, []);
@@ -75,7 +75,7 @@ test("run and inspect report diagnostics, in text and --json", () => {
   assert.equal(r.code, 0, r.stderr);
   assert.ok(
     r.stdout.includes(
-      `\n  ${at}: warning: wrote GPIOB->ODR while RCC->IOPENR.IOPBEN (bit 1) = 0`,
+      `\n  ${at}: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0`,
     ),
     r.stdout,
   );

@@ -79,8 +79,8 @@ export const stm32g031k8: Chip = {
   // Every SVD register without one is plain storage, logged as "unsimulated".
   peripherals: [
     rcc,
-    gpio("GPIOA", { register: "RCC.IOPENR", field: "IOPAEN" }, pins, af),
-    gpio("GPIOB", { register: "RCC.IOPENR", field: "IOPBEN" }, pins, af),
+    gpio("GPIOA", { register: "RCC.IOPENR", field: "GPIOAEN" }, pins, af),
+    gpio("GPIOB", { register: "RCC.IOPENR", field: "GPIOBEN" }, pins, af),
     systick,
     scb,
     i2c1,

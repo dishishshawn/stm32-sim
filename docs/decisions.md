@@ -305,7 +305,8 @@ The device header has bit masks but **no reset values**, so it can't replace the
   - `peripherals.<P>`: `baseAddress`, `registers`;
   - `registers.<R>`: `offset`, `size`, `access`, `resetValue`, `description`,
     `fields`;
-  - `fields.<F>`: `bitOffset`, `bitWidth`, `access`, `description`.
+  - `fields.<F>`: `bitOffset`, `bitWidth`, `access`, `description`, and `svdName`
+    when the field's name differs from the SVD's (see "Field names" below).
   - Addresses, offsets and reset values are hex strings (`"0x40005400"`). Sizes (in
     bits), bit offsets and widths are numbers.
   - Peripherals are sorted by base address, registers by offset, and fields by bit
@@ -313,7 +314,8 @@ The device header has bit masks but **no reset values**, so it can't replace the
 - Conversion rules:
   - `derivedFrom` is resolved the way svd-rs does it: the element's own values win,
     and a register or field list is inherited whole only when the element has none.
-  - `dim` arrays are expanded (`MODER%s` becomes `MODER0`…`MODER15`).
+  - `dim` arrays are expanded (`MODER%s` becomes `MODER0`…`MODER15`, which the
+    field naming then turns into `MODE0`…`MODE15`).
   - The one cluster, the DMA1 channels, is flattened to `CH1_CR`, `CH1_NDTR` and so
     on.
   - stm32-rs drops a register's access when its fields differ. Such a register takes
@@ -323,10 +325,55 @@ The device header has bit masks but **no reset values**, so it can't replace the
 - Registers that share an offset stay as the SVD has them. Examples: TIMx
   `CCMR1_Input`/`CCMR1_Output`, `CNT`/`CNT32`, SPI `DR`/`DR8`, CRC `DR`/`DR16`/`DR8`.
   A peripheral model implements whichever view it needs.
-- Names are stm32-rs's, and some differ from RM0444. GPIO `MODER0` is RM0444's
-  `MODE0`, and `AFREL8` is its `AFSEL8`. Descriptions keep ST's older wording: "master
-  mode" where RM0444 Rev 6 says "controller mode". Every address, offset, bit
-  position and reset value checked so far agrees with RM0444.
+- Peripheral and register names are stm32-rs's; field names are the CMSIS header's
+  (below). Descriptions keep ST's older wording: "master mode" where RM0444 Rev 6
+  says "controller mode". Every address, offset, bit position and reset value
+  checked so far agrees with RM0444.
+
+**Field names follow ST's CMSIS header (T38, 2026-10-07).** Learners write
+`RCC->IOPENR |= RCC_IOPENR_GPIOBEN;`, but the SVD calls that bit `IOPBEN`, GPIO's
+`MODE0` is its `MODER0`, and `AFSEL8` is its `AFREL8`. RM0444 and `stm32g031xx.h`
+agree, so diagnostics and the register view use the header's names.
+
+- `tools/svd2json.ts` also reads `vendor/cmsis-device-g0/stm32g031xx.h`. Each
+  peripheral's CMSIS instance and TYPE come from the header's
+  `#define GPIOB ((GPIO_TypeDef *) GPIOB_BASE)` lines, matched on base address, so
+  the SVD's `LPUART`, `ADC` and `DMAMUX` find `LPUART1`, `ADC1` and `DMAMUX1`. TYPE
+  is the `_TypeDef` name up to its first `_` (`DMAMUX_Channel` gives `DMAMUX`).
+- A field takes `<NAME>` from the macro `<TYPE>_<REG>_<NAME>_Pos`, or
+  `<INSTANCE>_<REG>_<NAME>_Pos` (`TIM1_AF1_…`), whose `_Pos` is its bit offset and
+  whose `_Msk` is exactly its width. If the SVD's name is one of the matches it
+  stays: the header also defines `I2C_OAR2_OA2MASK07` for `OA2MSK` and
+  `RCC_PLLCFGR_PLLSRC_HSE` for `PLLSRC`. Any other tie throws.
+- A renamed field keeps the SVD's name as `svdName`. A field with no match keeps the
+  SVD's name and gets no `svdName`. The script prints both counts.
+- Of 3456 fields, **668 are renamed**, 2175 already had the CMSIS name, and **613
+  have no match**. 390 of the 613 are in the 79 registers with no bit macro under
+  the SVD's register name: CMSIS names the register differently (below), or has no
+  bit definitions for it (USART `RQR`, FLASH `KEYR`, PWR port E). The rest differ in
+  width or position, such as EXTI `EXTICR` fields (8 bits in the SVD, 3 in the
+  header) and TIM2's 32-bit `CCR1` (the header's mask is 16 bits).
+- Some renames look odd, but they are what the header defines: USART `RXNE` becomes
+  `RXNE_RXFNE`, and LPUART `BRR.BRR` becomes `LPUART`. The header and the SVD swap
+  two pairs: SYSCFG `ITLINE3` `FLASH_ITF`/`FLASH_ECC`, and FLASH `OPTR`
+  `BORF_LEV`/`BORR_LEV`. Position decides, so the JSON follows the header, and the
+  descriptions, which come from the SVD, now contradict those four names. Neither
+  pair has been checked against RM0444.
+- **Register names stay the SVD's.** Where CMSIS differs:
+  - TIMx `CCMR1_Input`/`CCMR1_Output` (CMSIS `CCMR1`, also `CCMR2`, `CCMR3`) and
+    `CNT16`/`CNT32` (`CNT`);
+  - DMA1 `CH1_CR`, `CH1_NDTR`, `CH1_PAR`, `CH1_MAR`… (`DMA1_Channel1->CCR`,
+    `CNDTR`, `CPAR`, `CMAR`);
+  - DMAMUX `CCR0`… and `RGCR0`… (`DMAMUX1_Channel0->CCR`,
+    `DMAMUX1_RequestGenerator0->RGCR`);
+  - ADC `CHSELR0`/`CHSELR1` (`CHSELR`); SPI `DR8` and CRC `DR8`/`DR16` (`DR`);
+  - struct members only, with bit macros that use the SVD's name: GPIO
+    `AFRL`/`AFRH` (`AFR[0]`/`AFR[1]`, but `GPIO_AFRL_AFSEL0`), EXTI `EXTICR1`…
+    (`EXTICR[0]`…), DBG `APB_FZ1` (`APBFZ1`, but `DBG_APB_FZ1_…`).
+
+  Not renamed: most are several SVD views of one CMSIS register, which §8 keeps
+  apart. Among the simulated peripherals only GPIO's `AFRL`/`AFRH` is affected: a
+  diagnostic about it names `AFRL`, not `AFR[0]`.
 
 **XML parser: `@xmldom/xmldom` 0.9.12**, pinned exact as a dev dependency and used
 only by `tools/`. It is MIT, has no dependencies, and was last published 2026-08-23.

@@ -37,7 +37,7 @@ test("writing GPIOB with its clock off names the enable bit, at the line that wr
     rule: "gpio-clock-off",
     severity: "warning",
     message:
-      "wrote GPIOB->MODER while RCC->IOPENR.IOPBEN (bit 1) = 0 — " +
+      "wrote GPIOB->MODER while RCC->IOPENR.GPIOBEN (bit 1) = 0 — " +
       "GPIOB's clock is off, so the write was ignored",
     periph: "GPIOB",
     reg: "MODER",

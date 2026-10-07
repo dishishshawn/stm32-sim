@@ -13,7 +13,7 @@ import type { PartInstance } from "../parts/part.ts";
  */
 export type Registers = Record<string, number>;
 
-/** An RCC enable bit, e.g. `{ register: "RCC.IOPENR", field: "IOPAEN" }`. */
+/** An RCC enable bit, e.g. `{ register: "RCC.IOPENR", field: "GPIOAEN" }`. */
 export interface ClockGate {
   /** "<PERIPHERAL>.<REGISTER>" */
   readonly register: string;

@@ -37,7 +37,7 @@ function setup(nets = new Nets(), iopenr = 0b11) {
   return { bus, nets, set2 };
 }
 
-test("with IOPENR.IOPAEN = 0, a MODER write has no effect and the pin doesn't change", () => {
+test("with IOPENR.GPIOAEN = 0, a MODER write has no effect and the pin doesn't change", () => {
   const { bus, nets, set2 } = setup(new Nets(), 0b10); // GPIOB on, GPIOA off
   set2(GPIOA, MODER, 0, OUTPUT);
   bus.writeUint32(GPIOA + ODR, 1);
