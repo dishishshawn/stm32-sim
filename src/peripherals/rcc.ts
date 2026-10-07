@@ -23,6 +23,8 @@ const HSISYS = 0;
 const PLLRCLK = 2;
 const LSI = 3;
 const SWS = 7 << 3;
+/** The clock each SW and SWS value selects, 000 to 100 (§5.4.3); 101 to 111 are reserved. */
+export const SYSCLK_SOURCES = ["HSISYS", "HSE", "PLLRCLK", "LSI", "LSE"];
 /** HPRE 1000 to 1111 divide SYSCLK by these (§5.4.3); 0xxx by 1. */
 const AHB_DIVIDERS = [2, 4, 8, 16, 64, 128, 256, 512];
 // RCC_PLLCFGR (§5.4.4)

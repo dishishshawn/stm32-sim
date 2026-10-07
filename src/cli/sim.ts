@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
 import { chips } from "../chips/index.ts";
 import { rules } from "../diagnostics/index.ts";
+import { mhz } from "../diagnostics/names.ts";
 import { diagnose } from "../diagnostics/rule.ts";
 import { parseCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
@@ -17,6 +18,7 @@ import type { I2cTraceEvent } from "../engine/events.ts";
 import type { Chip } from "../engine/memory-bus.ts";
 import { propError } from "../parts/part.ts";
 import type { PropSpec, PropValue } from "../parts/part.ts";
+import { clocks, SYSCLK_SOURCES } from "../peripherals/rcc.ts";
 
 const USAGE = `usage:
   sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
@@ -207,6 +209,10 @@ function main(argv: string[]): number {
     log: s.log,
     diagnostics,
     ...(inspect && {
+      clocks: {
+        source: SYSCLK_SOURCES[(s.registers.RCC.CFGR >>> 3) & 7],
+        ...clocks(s.registers.RCC),
+      },
       registers: registers(chip, s),
       i2c,
       unsimulated: [...unsimulated.values()],
@@ -247,6 +253,10 @@ function main(argv: string[]): number {
     ),
   ];
   if (inspect) {
+    const c = result.clocks!;
+    out.push(
+      `clocks  SYSCLK ${mhz(c.sysclk)} from ${c.source}, HCLK ${mhz(c.hclk)}, PCLK ${mhz(c.pclk)}`,
+    );
     const shown = new Set([...touched, ...chip.peripherals.map((p) => p.name)]);
     out.push("registers");
     for (const [periph, regs] of Object.entries(result.registers!)) {

@@ -396,7 +396,7 @@ Its standard DOM suits the lookups `derivedFrom` needs. Rejected:
 `BORF_LEV`/`BORR_LEV`, RM0444 has BORF_LEV at bits 12:11 and BORR_LEV at 10:9. For
 SYSCFG_ITLINE3, FLASH_ITF is bit 1. Both agree with the CMSIS header, so the JSON's
 header-derived names are right and the SVD had them swapped. Those fields' SVD
-*descriptions* are still the swapped ones.
+_descriptions_ are still the swapped ones.
 
 ## 5. ELF loading and PC → file:line
 
@@ -760,7 +760,7 @@ I2C1EN = 1, so flags appear over simulated time:
 - A `Rule` gets each event plus a read-only `BoardView`: register values, net levels,
   `sameNet`, and a projection of each part (id, type, pins, props, and for an I2C
   target its `sda`/`scl`/`address()`). It never gets the bus or `setProp`, so it can't
-  change the run. The purity test runs four firmware scenarios with and without every
+  change the run. The purity test runs five firmware scenarios with and without every
   rule and compares the event logs and snapshots.
 - So a part's `address()` **must have no side effects**: diagnostics call it.
 - A rule that throws becomes a `rule-error` diagnostic; the run continues unchanged.
@@ -774,6 +774,16 @@ I2C1EN = 1, so flags appear over simulated time:
   (T41, `src/diagnostics/names.ts`). That's how exam-style firmware `#define`s them, so
   a learner can check their own address against the message. Field names are the CMSIS
   names (§4).
+- **Clock rules (T42).** There is no clock-change event, so `flash-latency` checks
+  the HCLK an RCC_CFGR write _selects_ (SW and HPRE, with SWS taken as SW) against
+  FLASH_ACR.LATENCY, and LATENCY when ACR is written. That blames the SW line, which
+  RM0444 §3.3.4's sequence says must come after LATENCY, even when the switch waits
+  for the PLL lock. Missed: SW = PLL written before the PLL is configured. Both
+  `flash-latency` and `pll-out-of-range` assume VCORE Range 1 (PWR_CR1.VOS's reset
+  value). `pll-out-of-range` checks at PLLON against DS12992 Table 43 (input 2.66–16,
+  VCO 96–344, PLLRCLK 12–64 MHz), PLLRCLK even with PLLREN = 0.
+  `pll-config-while-on` reports only a change to a field the write can't make
+  (§14), not a PLLCFGR write that sets an output enable, which RM0444 §5.2.4 allows.
 
 ## 14. Clock tree, and time that follows the clock (T39)
 

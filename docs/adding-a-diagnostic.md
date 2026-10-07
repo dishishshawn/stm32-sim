@@ -335,7 +335,7 @@ test:
 alone) for 0.3 s, and returns every event, the final snapshot and the
 diagnostics. The test runs it without and with your rule and checks that the
 events and the snapshot are identical. `rule.test.ts` does that for every
-registered rule too, but its four scenarios may never reach yours, so point
+registered rule too, but its five scenarios may never reach yours, so point
 this one at the firmware your rule is about:
 
 - **Firmware that does it right**, as the template uses `tc74-read`, which

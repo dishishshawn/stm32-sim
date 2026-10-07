@@ -97,6 +97,37 @@ test("run and inspect report diagnostics, in text and --json", () => {
   }
 });
 
+test("inspect prints the clocks: MHz in text, Hz in --json", () => {
+  const args = ["--at", "700ms"]; // pll-64mhz switches to the PLL at about 0.5 s
+  const r = sim("inspect", elf("pll-64mhz"), ...args);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(
+    r.stdout,
+    /^clocks {2}SYSCLK 64 MHz from PLLRCLK, HCLK 64 MHz, PCLK 64 MHz$/m,
+  );
+  const j = JSON.parse(
+    sim("inspect", elf("pll-64mhz"), ...args, "--json").stdout,
+  );
+  assert.deepEqual(j.clocks, {
+    source: "PLLRCLK",
+    sysclk: 64e6,
+    hclk: 64e6,
+    pclk: 64e6,
+  });
+  const reset = sim(
+    "inspect",
+    elf("blink"),
+    ...BLINK,
+    "--at",
+    "10ms",
+    "--json",
+  );
+  assert.equal(JSON.parse(reset.stdout).clocks.source, "HSISYS");
+  // run doesn't add it.
+  const run = sim("run", elf("blink"), ...BLINK, "--for", "10ms", "--json");
+  assert.equal(JSON.parse(run.stdout).clocks, undefined);
+});
+
 test("inspect on tc74-read: the I2C trace is one line per step in text, events in --json", () => {
   const args = [
     "--circuit",

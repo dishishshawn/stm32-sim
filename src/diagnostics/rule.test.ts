@@ -67,6 +67,7 @@ const SCENARIOS: [elf: string, circuit: string | null][] = [
   ["tc74-read", "tc74-read"],
   ["faults/gpio-clock", "faults/gpio-clock"],
   ["tc74-read", "faults/no-pullups"],
+  ["faults/flash-latency", null], // the clock tree: PLL, SYSCLK switch
 ];
 
 test("diagnostics are pure observers: the same events and snapshot with and without them", () => {

@@ -85,6 +85,14 @@ authoritative list: a new rule is one file plus one line there, so it isn't adde
 
 **`inspect`** prints the same, then:
 
+- the clocks at the end of the run, from RCC's registers: the SYSCLK source
+  (what SWS shows: `HSISYS`, `PLLRCLK`, `LSI`), SYSCLK, HCLK (the core and
+  SysTick) and PCLK (APB peripherals such as I2C1):
+
+  ```
+  clocks  SYSCLK 64 MHz from PLLRCLK, HCLK 64 MHz, PCLK 64 MHz
+  ```
+
 - the registers with their named bits, decoded from the chip's register map. In
   text, only the peripherals the firmware touched or that are simulated;
   `--json` gives every one;
@@ -204,6 +212,12 @@ Everything `run` has, plus:
 
 ```json
 {
+  "clocks": {
+    "source": "PLLRCLK",
+    "sysclk": 64000000,
+    "hclk": 64000000,
+    "pclk": 64000000
+  },
   "registers": {
     "GPIOA": {
       "MODER": {
@@ -233,13 +247,14 @@ Everything `run` has, plus:
 }
 ```
 
-| Field         | Meaning                                                                                                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `registers`   | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)                               |
-| `i2c`         | I2C1's bus trace, in order (`step.kind` is `start`, `addr`, `data` or `stop`) |
+| Field          | Meaning                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clocks`       | the clocks at the end of the run, in Hz: `source` (the SYSCLK source SWS shows: `"HSISYS"`, `"PLLRCLK"` or `"LSI"`), `sysclk`, `hclk` and `pclk` (added by T42; version stays 1)            |
+| `registers`    | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)                                   |
+| `i2c`          | I2C1's bus trace, in order (`step.kind` is `start`, `addr`, `data` or `stop`)                                                                                                               |
 | `notSimulated` | features a peripheral doesn't simulate (e.g. I2C1 RELOAD), once each: `{periph, feature, count}` (added in place of the earlier `kind: "unsimulated"` entries under `i2c`; version stays 1) |
-| `unsimulated` | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space)                              |
-| `parts`       | `state()` of each part that has one, by part id                                                                                                                                         |
+| `unsimulated`  | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space)                                  |
+| `parts`        | `state()` of each part that has one, by part id                                                                                                                                             |
 
 ### Errors
 
