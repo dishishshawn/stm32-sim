@@ -379,14 +379,14 @@ runs long, split the read path into a follow-up task.
 
 ### T15: TC74 part
 
-- [ ] Variants A0–A7 give addresses 0x48–0x4F. Registers:
+- [x] Variants A0–A7 give addresses 0x48–0x4F. Registers:
   - 0x00 TEMP: signed 8-bit, clamped to the datasheet range;
   - 0x01 CONFIG: SHDN (bit 7) and DATA_RDY (bit 6), timed per the datasheet.
 
   Writing a byte sets the pointer, and a read returns the register the pointer is on.
   The `temperature` prop is settable.
 
-- [ ] Add it to `src/parts/index.ts`. Tests through the I2C target interface:
+- [x] Add it to `src/parts/index.ts`. Tests through the I2C target interface:
   - a read without setting the pointer returns TEMP, the power-up pointer;
   - −5 °C reads as `0xFB`;
   - the address follows the variant;
