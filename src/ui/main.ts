@@ -9,6 +9,8 @@ import type { PropValue } from "../parts/part.ts";
 import { partArt, PX_PER_UNIT } from "./art/index.ts";
 import type { Art } from "./art/index.ts";
 import { nucleo } from "./art/nucleo-g031k8.ts";
+import { panels } from "./panels.ts";
+import type { Ui } from "./ui.ts";
 
 /** Simulated seconds per runFor(), and the wall-clock ms a frame may spend simulating. */
 const SLICE = 0.001;
@@ -33,6 +35,8 @@ const engine = new Engine();
 const updates: ((s: Snapshot) => void)[] = [];
 /** Simulated time at the last frame. A prop set at it applies at once. */
 let seconds = 0;
+/** Panels (./panels.ts) pause the run loop through this. */
+const loop = { paused: false };
 let last: number | undefined;
 
 try {
@@ -43,6 +47,7 @@ try {
   const circuit = parseCircuit(text, catalog);
   engine.load(new Uint8Array(elf), circuit);
   render(circuit);
+  mountPanels(circuit);
   requestAnimationFrame(frame);
 } catch (e) {
   $("run").textContent = `error: ${(e as Error).message}`;
@@ -56,8 +61,9 @@ function frame(now: number) {
   const due = Math.min(now - (last ?? now), 100) / 1000;
   last = now;
   const start = performance.now();
-  for (let t = 0; t < due && performance.now() - start < BUDGET_MS; t += SLICE)
-    engine.runFor(SLICE);
+  if (!loop.paused)
+    for (let t = 0; t < due && performance.now() - start < BUDGET_MS; t += SLICE)
+      engine.runFor(SLICE);
   const s = engine.snapshot();
   seconds = s.seconds;
   for (const update of updates) update(s);
@@ -65,6 +71,28 @@ function frame(now: number) {
   const run = status(s);
   if ($("run").textContent !== run) $("run").textContent = run;
   if (!s.halt) requestAnimationFrame(frame);
+}
+
+/** Gives each registered panel the engine, the snapshots and its own section. */
+function mountPanels(circuit: Circuit) {
+  const ui: Ui = {
+    engine,
+    circuit,
+    run: loop,
+    onSnapshot: (fn) => void updates.push(fn),
+    panel(title) {
+      const section = document.createElement("section");
+      section.className = "panel";
+      const h2 = document.createElement("h2");
+      h2.textContent = title;
+      const body = document.createElement("div");
+      section.append(h2, body);
+      $("panels").append(section);
+      return body;
+    },
+    toolbar: $("toolbar"),
+  };
+  for (const mount of panels) mount(ui);
 }
 
 /** As `sim run` words it. */

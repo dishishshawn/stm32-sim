@@ -1016,6 +1016,13 @@ stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
   `channel: "chrome"` (CI images have it, a learner's machine may not, and
   its version drifts).
 
+**Panels (added before T31–T36).** A panel is one file in `src/ui/`, registered in
+`src/ui/panels.ts`. It gets a `Ui` (`src/ui/ui.ts`): the engine, the circuit, a
+`run.paused` flag the frame loop respects, `onSnapshot(fn)`, `panel(title)` for its own
+section in the right-hand sidebar, and the header `toolbar` for run controls. That way
+panels can be built in parallel without editing `main.ts`. Only placing parts and
+wires (T31, T32) change `main.ts`'s rendering.
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's
