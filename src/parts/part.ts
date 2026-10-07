@@ -42,6 +42,8 @@ export interface PartInstance {
   tick?(seconds: number): void;
   /** A prop changed at run time (button pressed, slider moved). The caller has already checked it with propError(). */
   setProp?(name: string, value: PropValue): void;
+  /** What the part shows (an LED's `lit`, a display's `values`), for tests, `sim inspect` and the UI. */
+  state?(): Readonly<Record<string, unknown>>;
 }
 
 /** Why `value` is not valid for `spec`, or undefined if it is. */
