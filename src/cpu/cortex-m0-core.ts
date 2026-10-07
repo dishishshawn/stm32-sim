@@ -3,9 +3,12 @@
 // MIT License. Copyright (c) 2021 Uri Shaked
 // Changes: runs against our Bus instead of the RP2040 class, with the logger as
 // a field; the IRQ count is a constructor parameter; every load and store costs
-// the same; enums became const objects.
+// the same; enums became const objects. Faults (undefined opcodes, UDF, a
+// BusFault from the bus) enter HardFault or lock the core up, instead of only
+// logging (T11).
 
 import type { Bus } from "./bus.ts";
+import { BusFault } from "./bus.ts";
 
 /** Where the core reports unimplemented instructions and SYSm values. */
 export interface Logger {
@@ -87,6 +90,12 @@ export class CortexM0Core {
 
   // How many bytes to rewind the last break instruction
   public breakRewind = 0;
+
+  // Set on lockup (ARMv6-M ARM B1.5.15): a fault inside the HardFault or NMI
+  // handler, or during exception entry. From then on executeInstruction does
+  // nothing and returns 0.
+  lockedUp = false;
+  lockupReason = "";
 
   // PRIMASK fields
   public PM: boolean = false;
@@ -274,6 +283,37 @@ export class CortexM0Core {
   }
 
   exceptionEntry(exceptionNumber: number) {
+    try {
+      this.takeException(exceptionNumber);
+    } catch (e) {
+      if (!(e instanceof BusFault)) throw e;
+      this.lockup(`${e.message} during exception entry`);
+    }
+  }
+
+  /** Takes a HardFault for the instruction at `pc`, or locks up if it can't. */
+  private hardFault(pc: number, cause: string) {
+    const at = `at 0x${(pc >>> 0).toString(16).padStart(8, "0")}: ${cause}`;
+    // The stacked return address is the faulting instruction. On lockup the PC
+    // stays there too, so it maps to file:line (hardware reads 0xFFFFFFFE).
+    this.PC = pc;
+    // ARMv6-M has no priority above HardFault to escalate to.
+    if (this.exceptionPriority(this.IPSR) < 0) {
+      const handler = this.IPSR === EXC_NMI ? "NMI" : "HardFault";
+      this.lockup(`fault inside ${handler} ${at}`);
+    } else {
+      this.logger.warn(LOG_NAME, `HardFault ${at}`);
+      this.exceptionEntry(EXC_HARDFAULT);
+    }
+  }
+
+  private lockup(reason: string) {
+    this.lockedUp = true;
+    this.lockupReason = reason;
+    this.logger.warn(LOG_NAME, `Lockup: ${reason}`);
+  }
+
+  private takeException(exceptionNumber: number) {
     // PushStack:
     let framePtr = 0;
     let framePtrAlign = 0;
@@ -640,13 +680,26 @@ export class CortexM0Core {
   }
 
   executeInstruction() {
-    if (this.interruptsUpdated) {
-      if (this.checkForInterrupts()) {
-        this.waiting = false;
-      }
+    if (!this.lockedUp && this.interruptsUpdated && this.checkForInterrupts()) {
+      this.waiting = false;
     }
-    // ARM Thumb instruction encoding - 16 bits / 2 bytes
+    if (this.lockedUp) {
+      return 0;
+    }
     const opcodePC = this.PC & ~1; //ensure no LSB set PC are executed
+    try {
+      return this.execute(opcodePC);
+    } catch (e) {
+      // ARMv6-M has no BusFault exception: a failed fetch, load or store is a
+      // HardFault.
+      if (!(e instanceof BusFault)) throw e;
+      this.hardFault(opcodePC, e.message);
+      return 0;
+    }
+  }
+
+  private execute(opcodePC: number) {
+    // ARM Thumb instruction encoding - 16 bits / 2 bytes
     const opcode = this.readUint16(opcodePC);
     const wideInstruction = opcode >> 12 === 0b1111 || opcode >> 11 === 0b11101;
     const opcode2 = wideInstruction ? this.readUint16(opcodePC + 2) : 0;
@@ -1339,20 +1392,6 @@ export class CortexM0Core {
       this.N = !!(result & 0x80000000);
       this.Z = result === 0;
     }
-    // UDF
-    else if (opcode >> 8 == 0b11011110) {
-      const imm8 = opcode & 0xff;
-      this.breakRewind = 2;
-      this.bus.onBreak(imm8);
-    }
-    // UDF (Encoding T2)
-    else if (opcode >> 4 === 0b111101111111 && opcode2 >> 12 === 0b1010) {
-      const imm4 = opcode & 0xf;
-      const imm12 = opcode2 & 0xfff;
-      this.breakRewind = 4;
-      this.bus.onBreak((imm4 << 12) | imm12);
-      this.PC += 2;
-    }
     // UXTB
     else if (opcode >> 6 == 0b1011001011) {
       const Rm = (opcode >> 3) & 0x7;
@@ -1383,15 +1422,15 @@ export class CortexM0Core {
     else if (opcode === 0b1011111100010000) {
       // do nothing for now. Wait for event!
       this.logger.info(LOG_NAME, "Yield");
-    } else {
-      this.logger.warn(
-        LOG_NAME,
-        `Warning: Instruction at ${opcodePC.toString(16)} is not implemented yet!`,
-      );
-      this.logger.warn(
-        LOG_NAME,
-        `Opcode: 0x${opcode.toString(16)} (0x${opcode2.toString(16)})`,
-      );
+    }
+    // Anything else is undefined on ARMv6-M, including UDF and the 32-bit
+    // Thumb-2 instructions of v7-M (firmware built with the wrong -mcpu).
+    else {
+      const hex = (half: number) => half.toString(16).padStart(4, "0");
+      const encoding = wideInstruction
+        ? `${hex(opcode)} ${hex(opcode2)}`
+        : hex(opcode);
+      this.hardFault(opcodePC, `undefined instruction 0x${encoding}`);
     }
 
     this.cycles += deltaCycles;
