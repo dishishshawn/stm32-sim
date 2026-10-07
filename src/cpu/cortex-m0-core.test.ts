@@ -15,6 +15,7 @@ import {
   SYSM_PRIMASK,
   SYSM_PSP,
 } from "./cortex-m0-core.ts";
+import { BusFault } from "./bus.ts";
 import { TestBus } from "./ram-bus.ts";
 import {
   opcodeADCS,
@@ -1162,34 +1163,6 @@ describe("Cortex-M0+ Instruction Set", () => {
     assert.equal(registers.r5, 0xfffff055);
   });
 
-  it("should execute a `udf 1` instruction", () => {
-    const breakMock = mock.fn();
-    const { bus, core } = new CoreTestDriver();
-    core.PC = 0x20000000;
-    bus.writeUint16(0x20000000, opcodeUDF(0x1));
-    bus.onBreak = breakMock;
-    core.executeInstruction();
-    assert.equal(core.PC, 0x20000002);
-    assert.deepEqual(
-      breakMock.mock.calls.map((call) => call.arguments),
-      [[1]],
-    );
-  });
-
-  it("should execute a `udf.w #0` (T2 encoding) instruction", () => {
-    const breakMock = mock.fn();
-    const { bus, core } = new CoreTestDriver();
-    core.PC = 0x20000000;
-    bus.writeUint32(0x20000000, opcodeUDF2(0));
-    bus.onBreak = breakMock;
-    core.executeInstruction();
-    assert.equal(core.PC, 0x20000004);
-    assert.deepEqual(
-      breakMock.mock.calls.map((call) => call.arguments),
-      [[0]],
-    );
-  });
-
   it("should execute a `lsls r5, r5, #18` instruction", async () => {
     await cpu.setPC(0x20000000);
     await cpu.writeUint16(0x20000000, opcodeLSLSimm(r5, r5, 18));
@@ -1711,5 +1684,158 @@ describe("Cortex-M0+ Instruction Set", () => {
     await cpu.singleStep();
     const registers = await cpu.readRegisters();
     assert.equal(registers.pc, 0x20000002);
+  });
+});
+
+// Nothing is mapped from 0x40000000 up: an access there throws BusFault, as on
+// the memory bus. Elsewhere TestBus still throws RangeError, so a stray test
+// fails loudly instead of faulting.
+const UNMAPPED = 0x40000000;
+function mapped(address: number) {
+  if (address >>> 0 >= UNMAPPED) throw new BusFault(address);
+  return address;
+}
+class FaultingBus extends TestBus {
+  readUint16(address: number) {
+    return super.readUint16(mapped(address));
+  }
+  readUint32(address: number) {
+    return super.readUint32(mapped(address));
+  }
+  writeUint32(address: number, value: number) {
+    super.writeUint32(mapped(address), value);
+  }
+}
+
+describe("Cortex-M0+ faults", () => {
+  const EXC_HARDFAULT = 3;
+  const HARDFAULT_HANDLER = 0x20002000;
+  const STACK_TOP = 0x20004000;
+  const FAULT_PC = 0x20000000;
+
+  function faultingCore() {
+    const bus = new FaultingBus();
+    const core = new CortexM0Core(bus);
+    const warn = mock.fn();
+    core.logger = { warn, info: () => {} };
+    core.VTOR = 0x20040000;
+    bus.writeUint32(core.VTOR + EXC_HARDFAULT * 4, HARDFAULT_HANDLER);
+    core.SP = STACK_TOP;
+    core.PC = FAULT_PC;
+    return { bus, core, warn };
+  }
+
+  function assertHardFault(
+    { bus, core }: ReturnType<typeof faultingCore>,
+    faultPC = FAULT_PC,
+  ) {
+    assert.equal(core.lockedUp, false);
+    assert.equal(core.IPSR, EXC_HARDFAULT);
+    assert.equal(core.xPSR & 0x3f, EXC_HARDFAULT);
+    assert.equal(core.PC, HARDFAULT_HANDLER);
+    assert.equal(core.LR, 0xfffffff9);
+    assert.equal(core.SP, STACK_TOP - 0x20);
+    assert.equal(bus.readUint32(core.SP + 0x18), faultPC, "stacked PC");
+  }
+
+  it("enters HardFault on an undefined 16-bit opcode (v7-M `cbz`)", () => {
+    const t = faultingCore();
+    t.bus.writeUint16(FAULT_PC, 0xb100); // cbz r0, .+4
+    t.core.executeInstruction();
+    assertHardFault(t);
+    assert.equal(
+      t.warn.mock.calls[0].arguments[1],
+      "HardFault at 0x20000000: undefined instruction 0xb100",
+    );
+  });
+
+  it("enters HardFault on `udf #1`, not a break", () => {
+    const t = faultingCore();
+    const onBreak = mock.fn();
+    t.bus.onBreak = onBreak;
+    t.bus.writeUint16(FAULT_PC, opcodeUDF(1));
+    t.core.executeInstruction();
+    assertHardFault(t);
+    assert.equal(onBreak.mock.callCount(), 0);
+  });
+
+  it("enters HardFault on `udf.w #0`, not a break", () => {
+    const t = faultingCore();
+    const onBreak = mock.fn();
+    t.bus.onBreak = onBreak;
+    t.bus.writeUint32(FAULT_PC, opcodeUDF2(0));
+    t.core.executeInstruction();
+    assertHardFault(t);
+    assert.equal(onBreak.mock.callCount(), 0);
+  });
+
+  it("enters HardFault on a Thumb-2-only `ldr.w r0, [r1]`", () => {
+    const t = faultingCore();
+    t.bus.writeUint16(FAULT_PC, 0xf8d1);
+    t.bus.writeUint16(FAULT_PC + 2, 0x0000);
+    t.core.registers[1] = 0x20001000;
+    t.core.executeInstruction();
+    assertHardFault(t);
+    assert.match(t.warn.mock.calls[0].arguments[1], /0xf8d1 0000$/);
+  });
+
+  it("enters HardFault when a load hits an unmapped address", () => {
+    const t = faultingCore();
+    t.bus.writeUint16(FAULT_PC, opcodeLDRimm(r0, r1, 0));
+    t.core.registers[0] = 0x1234;
+    t.core.registers[1] = UNMAPPED;
+    t.core.executeInstruction();
+    assertHardFault(t);
+    assert.equal(t.bus.readUint32(t.core.SP), 0x1234, "r0 untouched");
+    assert.match(t.warn.mock.calls[0].arguments[1], /bus fault at 0x40000000/);
+  });
+
+  it("enters HardFault when an instruction fetch hits an unmapped address", () => {
+    const t = faultingCore();
+    t.core.PC = UNMAPPED;
+    t.core.executeInstruction();
+    assertHardFault(t, UNMAPPED);
+  });
+
+  it("locks up on a fault inside the HardFault handler", () => {
+    const t = faultingCore();
+    t.bus.writeUint16(FAULT_PC, opcodeUDF(0));
+    t.bus.writeUint16(HARDFAULT_HANDLER, opcodeLDRimm(r0, r1, 0));
+    t.core.registers[1] = UNMAPPED;
+    t.core.executeInstruction();
+    assertHardFault(t);
+    t.core.executeInstruction();
+    assert.equal(t.core.lockedUp, true);
+    assert.equal(
+      t.core.lockupReason,
+      "fault inside HardFault at 0x20002000: bus fault at 0x40000000",
+    );
+    assert.equal(t.core.PC, HARDFAULT_HANDLER);
+    assert.equal(t.core.executeInstruction(), 0, "executes nothing more");
+    assert.equal(t.core.PC, HARDFAULT_HANDLER);
+  });
+
+  it("locks up on a fault while stacking for exception entry", () => {
+    const t = faultingCore();
+    t.bus.writeUint16(FAULT_PC, opcodeUDF(0));
+    t.core.SP = UNMAPPED + 0x100;
+    t.core.executeInstruction();
+    assert.equal(t.core.lockedUp, true);
+    assert.match(t.core.lockupReason, /during exception entry$/);
+    assert.equal(t.core.executeInstruction(), 0);
+  });
+
+  it("halts on `bkpt` like an attached debugger, without a HardFault", () => {
+    const t = faultingCore();
+    const onBreak = mock.fn();
+    t.bus.onBreak = onBreak;
+    t.bus.writeUint16(FAULT_PC, 0xbe03); // bkpt #3
+    t.core.executeInstruction();
+    assert.deepEqual(
+      onBreak.mock.calls.map((call) => call.arguments),
+      [[3]],
+    );
+    assert.equal(t.core.IPSR, 0);
+    assert.equal(t.core.PC - t.core.breakRewind, FAULT_PC);
   });
 });

@@ -97,6 +97,7 @@ apply upstream fixes by hand.
 
 - An unimplemented or undefined opcode only logs a warning (`:1317`). On hardware it
   raises a HardFault. The HardFault path is a TODO upstream (`rp2040.ts:196`).
+  Done in T11, below.
 - `cyclesIO` hard-codes the RP2040 SIO/APB address ranges (`:577-586`). Remove it;
   cycle-exact timing is out of scope.
 - `MAX_HARDWARE_IRQ = 25` (`irq.ts:30`) is an RP2040 number. Make it a chip parameter.
@@ -122,6 +123,29 @@ apply upstream fixes by hand.
   run prettier over the upstream file first; the diff is then only the changes above.
 - Not ported: upstream's GDB test driver (`TEST_GDB_SERVER`), which runs the same
   cases on real hardware. Worth adding once a NUCLEO-G031K8 and probe-rs are set up.
+
+**How T11 did faults** (`cortex-m0-core.ts`, ARMv6-M ARM B1.5):
+
+- Any opcode the decoder doesn't match is undefined on ARMv6-M and enters HardFault
+  (exception 3). That covers UDF (both encodings) and v7-M instructions such as
+  `cbz`, `it` or 32-bit `ldr.w`/`add.w` from firmware built with the wrong `-mcpu`.
+  The stacked return address is the faulting instruction, and the core logs one
+  `HardFault at 0x…: …` line through `logger.warn`.
+- A `BusFault` thrown by the bus during a fetch, load or store aborts the instruction
+  and enters HardFault the same way. Any other exception still escapes the core, so a
+  simulator bug stays loud.
+- Lockup: a fault while executing at priority -1 or above (inside HardFault or NMI),
+  or a `BusFault` anywhere in exception entry (stacking or vector read). The core sets
+  `lockedUp = true` and `lockupReason`, logs it, and `executeInstruction()` then
+  returns 0 and does nothing; the engine stops on `lockedUp`. Simplification: on
+  hardware a stacking fault for an ordinary exception first escalates to HardFault,
+  but that stacks onto the same bad SP and locks up anyway.
+- On lockup the PC stays at the faulting instruction so it maps to file:line. Real
+  hardware reads PC as `0xFFFFFFFE` there.
+- **BKPT halts, like an attached debugger.** It calls `bus.onBreak(imm8)` and sets
+  `breakRewind = 2`, as upstream did. Without a debugger, ARMv6-M escalates BKPT to
+  HardFault, but the simulator plays the debugger (`sim inspect`, stepping), and a
+  learner who writes `__BKPT()` wants to stop there. UDF is not a break: it HardFaults.
 
 ### Later (Cortex-M3/M4/M7): decide when the second chip is added
 
