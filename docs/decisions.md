@@ -102,6 +102,27 @@ apply upstream fixes by hand.
 - `MAX_HARDWARE_IRQ = 25` (`irq.ts:30`) is an RP2040 number. Make it a chip parameter.
   The G031 has 32 IRQ lines and 2 NVIC priority bits.
 
+**How T2 did it** (`src/cpu/`). Choices the T2 card left open:
+
+- `Bus` is only the six reads/writes and `onBreak`, named as the core already called
+  them on the RP2040 class.
+- The core's `logger` (warn/info: unimplemented opcode or SYSm, SEV, YIELD) is a
+  public field on the core, not part of `Bus`. It defaults to `console`, which exists
+  in Node and the browser and isn't an import. The engine replaces it when the event
+  log exists (T7).
+- `new CortexM0Core(bus, irqCount = 32)`. Upstream cleared a pending IRQ above
+  `MAX_HARDWARE_IRQ` on entry (the RP2040's software IRQs). That is kept as
+  `irq >= irqCount`, so it does nothing at 32.
+- `cyclesIO` returns 1 for every address. No upstream test checks cycle counts, so no
+  test changed.
+- `TestBus` is flat RAM at `0x20000000`, `0x42000` bytes (every address the upstream
+  tests touch). An access outside it throws `RangeError`. It has no SCB, so the test
+  driver turns the SVC test's write to `VTOR` (`0xE000ED08`) into `core.VTOR = …`.
+- The copies are reformatted to this repo's prettier style. To diff against upstream,
+  run prettier over the upstream file first; the diff is then only the changes above.
+- Not ported: upstream's GDB test driver (`TEST_GDB_SERVER`), which runs the same
+  cases on real hardware. Worth adding once a NUCLEO-G031K8 and probe-rs are set up.
+
 ### Later (Cortex-M3/M4/M7): decide when the second chip is added
 
 The CPU sits behind the same bus interface, so a v7-M core can be swapped in per chip
