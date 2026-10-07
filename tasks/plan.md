@@ -266,6 +266,18 @@ T39, T40 and T41 run in parallel.
 - Every acceptance item in the brief is met and verified in CI.
 - The README quickstart works from a fresh clone.
 
+## Later ideas (not scheduled)
+
+- **Logic analyzer.** A UI panel that draws chosen pins as waveforms over time,
+  with zoom and cursors to measure timing, from the event log's net changes and
+  `Engine.secondsAt`. Plus `sim run --vcd out.vcd`, so a run opens in
+  PulseView/sigrok with its protocol decoders. **Caveat:** I2C is simulated per
+  transaction (decisions.md §7), so SDA/SCL don't toggle bit by bit. Rebuild the
+  bit-level edges from the I2C trace for display and VCD, at the timing TIMINGR
+  sets, without changing the simulation. Suggested by Shawn, 2026-10-07.
+- **Oscilloscope.** Needs analog net values, so it comes with the analog extension
+  (ADC, potentiometers). Until then a "scope" could only show digital edges.
+
 ## Contract gates
 
 These are reviews before parallel work fans out over a shared interface. Each takes
