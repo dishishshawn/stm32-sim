@@ -123,8 +123,8 @@ test("faults/gpio-clock: i2c-pins-not-af6 at the START, after gpio-clock-off", (
   const d = found.find((d) => d.rule === "i2c-pins-not-af6")!;
   assert.ok(
     d.message.endsWith(
-      ": PB6 needs AF6 but is analog (GPIOB->MODER.MODE6 = 3); " +
-        "PB7 needs AF6 but is analog (GPIOB->MODER.MODE7 = 3)",
+      ": PB6 needs AF6 but is analog (GPIOB_MODER (0x50000400) bits 13:12 MODE6 = 3); " +
+        "PB7 needs AF6 but is analog (GPIOB_MODER (0x50000400) bits 15:14 MODE7 = 3)",
     ),
     d.message,
   );

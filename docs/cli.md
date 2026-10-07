@@ -62,8 +62,12 @@ instruction caused it (an I2C NACK):
 
 ```
 diagnostics
-  firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
+  firmware/clock-off/main.c:25: warning: wrote GPIOB_ODR (0x50000414) while RCC_IOPENR (0x40021034) bit 1 GPIOBEN = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
 ```
+
+A message names each register as exam-style C `#define`s it, `<PERIPH>_<REG>`,
+with its address, and a field by its bit or bits: `GPIOB_MODER (0x50000400)
+bits 13:12 MODE6`. Compare the address with your `#define` to catch a wrong one.
 
 These are the rules at the time of writing. `src/diagnostics/index.ts` is the
 authoritative list: a new rule is one file plus one line there, so it isn't added here.
@@ -72,7 +76,7 @@ authoritative list: a new rule is one file plus one line there, so it isn't adde
 | ---------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
 | `gpio-clock-off`       | `warning` | an access to a peripheral whose RCC clock enable bit is 0 (any clock-gated one, not only GPIO)                        |
 | `unsimulated-register` | `info`    | an access to a register the simulator doesn't model yet                                                               |
-| `timingr-while-pe`     | `warning` | a write to I2C1->TIMINGR while CR1.PE = 1, which was ignored                                                          |
+| `timingr-while-pe`     | `warning` | a write to I2C1_TIMINGR while I2C1_CR1 bit 0 PE = 1, which was ignored                                                |
 | `i2c-pins-not-af6`     | `warning` | START set while SCL or SDA isn't routed to any pin (no pin in AF mode with AF6), naming what the pins are instead     |
 | `i2c-pin-push-pull`    | `warning` | START set while a pin routed to I2C1 is push-pull (OTYPER bit 0) instead of open drain                                |
 | `i2c-bus-not-idle`     | `warning` | START set while SCL or SDA isn't high, so START never goes out: floating (no pull-ups), low (held low) or in conflict |
@@ -174,7 +178,7 @@ Each diagnostic:
 {
   "rule": "gpio-clock-off",
   "severity": "warning",
-  "message": "wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored",
+  "message": "wrote GPIOB_ODR (0x50000414) while RCC_IOPENR (0x40021034) bit 1 GPIOBEN = 0 — GPIOB's clock is off, so the write was ignored",
   "periph": "GPIOB",
   "reg": "ODR",
   "count": 3,

@@ -51,9 +51,10 @@ test("a TXDR write while TXE = 0: names the bit, the section and the fix", () =>
       {
         severity: "warning",
         message:
-          "wrote I2C1->TXDR while I2C1->ISR.TXE (bit 0) = 0, so the write was ignored " +
-          "and that byte never goes out: TXDR can be written only when TXE = 1 " +
-          "(RM0444 §32.9.11). Wait for I2C1->ISR.TXIS = 1 before writing each byte",
+          "wrote I2C1_TXDR (0x40005428) while I2C1_ISR (0x40005418) bit 0 TXE = 0, " +
+          "so the write was ignored and that byte never goes out: TXDR can be written only " +
+          "when TXE = 1 (RM0444 §32.9.11). Wait for I2C1_ISR (0x40005418) bit 1 TXIS = 1 " +
+          "before writing each byte",
         periph: "I2C1",
         reg: "TXDR",
       },

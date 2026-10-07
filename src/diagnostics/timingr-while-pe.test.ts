@@ -32,7 +32,8 @@ test("a TIMINGR write with PE = 1 was ignored: says so, and when to write it", (
     {
       severity: "warning",
       message:
-        "wrote I2C1->TIMINGR while I2C1->CR1.PE = 1, so the write was ignored: " +
+        "wrote I2C1_TIMINGR (0x40005410) while I2C1_CR1 (0x40005400) bit 0 PE = 1, " +
+        "so the write was ignored: " +
         "TIMINGR must be configured when the I2C is disabled, PE = 0 (RM0444 §32.9.5). " +
         "Write TIMINGR before setting PE, or clear PE first",
       periph: "I2C1",

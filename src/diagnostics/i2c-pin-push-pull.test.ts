@@ -37,7 +37,7 @@ test("an I2C pin in AF6 but push-pull: one diagnostic for that pin", () => {
     {
       severity: "warning",
       message:
-        "PB7 is I2C1_SDA (AF6) but push-pull (GPIOB->OTYPER.OT7 = 0): I2C lines must be " +
+        "PB7 is I2C1_SDA (AF6) but push-pull (GPIOB_OTYPER (0x50000404) bit 7 OT7 = 0): I2C lines must be " +
         "open drain (OT7 = 1), so devices only ever pull them low. Push-pull drives the " +
         "line high while a target pulls it low (an ACK, or clock stretching). The " +
         "simulator doesn't show that fight; on a real board it can lose the ACK or " +
