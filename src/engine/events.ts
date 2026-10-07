@@ -1,6 +1,7 @@
 // The single event log. Producers (memory bus, I2C bus, nets) emit; consumers
 // (diagnostics, the I2C trace, `sim inspect`, the UI) subscribe. It stores
 // nothing: blink writes ODR millions of times, so each consumer keeps what it needs.
+import type { I2cEvent } from "./i2c.ts";
 import type { Level } from "./nets.ts";
 
 /** Why an access deserves a second look. */
@@ -44,8 +45,27 @@ export interface NetEvent {
   readonly level: Level;
 }
 
-/** Every event kind. Later tasks add theirs to this union (I2C in T13). */
-export type SimEvent = RegEvent | NetEvent;
+/** One step of an I2C controller's bus trace (src/engine/i2c.ts). */
+export interface I2cTraceEvent {
+  readonly kind: "i2c";
+  /** When the step happened: the same as `step.t`. */
+  readonly cycle: number;
+  /** The controller, e.g. "I2C1". */
+  readonly periph: string;
+  readonly step: I2cEvent;
+}
+
+/** The firmware selected a feature the simulator doesn't model, e.g. I2C1's "CR2.RELOAD". */
+export interface UnsimulatedEvent {
+  readonly kind: "unsimulated";
+  readonly cycle: number;
+  readonly periph: string;
+  /** "<REGISTER>.<FIELD>" */
+  readonly feature: string;
+}
+
+/** Every event kind. Later tasks add theirs to this union. */
+export type SimEvent = RegEvent | NetEvent | I2cTraceEvent | UnsimulatedEvent;
 
 export type Subscriber = (event: SimEvent) => void;
 

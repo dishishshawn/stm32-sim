@@ -155,3 +155,20 @@ test("a pin that isn't on the package isn't connected", () => {
   assert.equal(nets.level("mcu.PB12"), "floating");
   assert.equal(bus.readUint32(GPIOB + IDR), 0);
 });
+
+test("AF routing: PB6 in AF6 joins mcu.I2C1_SCL, and leaving AF6 cuts it off", () => {
+  const { bus, nets, set2 } = setup();
+  set2(GPIOB, PUPDR, 6, 1); // pull-up, stays on the pin
+  set2(GPIOB, MODER, 6, AF);
+  bus.writeUint32(GPIOB + AFRL, 6 << 24);
+  assert.ok(nets.sameNet("mcu.PB6", "mcu.I2C1_SCL"));
+  assert.equal(nets.level("mcu.I2C1_SCL"), "high");
+
+  bus.writeUint32(GPIOB + AFRL, 1 << 24); // AF1: TIM1_CH3
+  assert.ok(!nets.sameNet("mcu.PB6", "mcu.I2C1_SCL"));
+  assert.equal(nets.level("mcu.I2C1_SCL"), "floating");
+
+  bus.writeUint32(GPIOB + AFRL, 6 << 24);
+  set2(GPIOB, MODER, 6, OUTPUT); // AFR still 6, but not AF mode
+  assert.equal(nets.level("mcu.I2C1_SCL"), "floating");
+});

@@ -524,12 +524,11 @@ driven (`mcu.PB12` stays unconnected).
 - **PUPDR 11** (reserved) pulls neither way (**assumed**).
 - **BSRR**: set wins when a pin's set and reset bits are both written. BSRR and BRR
   act on ODR and read 0. IDR ignores writes.
-- **AF ownership.** Nets hold one drive per endpoint, and an AF peripheral (I2C1 in
-  T14) drives the same `mcu.<pin>` through `ctx.nets`. So GPIO re-drives a pin only
-  when its own drive for that pin changes; writes for other pins leave it alone.
+- **AF ownership.** Superseded by AF endpoints (§12): an AF peripheral never drives
+  `mcu.<pin>`; GPIO joins the pin to the peripheral's own endpoint with a switch.
+  GPIO still re-drives a pin only when its own drive for that pin changes.
   `alternateFunction(regsOf("GPIOB"), 6)` gives a pin's AF number, or undefined
-  outside AF mode. An AF peripheral that releases a line should put back the PUPDR
-  pull, because its drive replaced GPIO's.
+  outside AF mode.
 - Not simulated: LCKR (plain storage, so locking does nothing), OSPEEDR (no digital
   effect), IOPRSTR port resets.
 - Registering a peripheral marks all its registers simulated, so RCC's PLLCFGR, for
@@ -631,6 +630,67 @@ driven (`mcu.PB12` stays unconnected).
   from 3.65 to 3.16 simulated seconds per wall second (this laptop, same run);
   the SysTick firmware runs at about 2.2.
 
+## 12. I2C1 and alternate-function routing (T14)
+
+`src/peripherals/i2c.ts`, the AF table in `src/chips/stm32g031k8.ts`, AF routing in
+`src/peripherals/gpio.ts`. Behavior is from RM0444 Rev 6 chapter 32, cited by section
+in the code.
+
+**Contract additions.**
+
+- `PeripheralContext.parts` (the mounted parts, read live) and
+  `PeripheralContext.events` (the event log). `MemoryBusOptions.parts` is optional
+  (default none); the engine passes its parts map before mounting into it.
+- `gpio(name, gate, pins, af)` takes the chip's `AfTable`: per pin, AF number →
+  signal, e.g. `{ PB6: { 6: "I2C1_SCL" } }`.
+- Two event kinds: `i2c` (`{cycle, periph, step}`, `step` being the `I2cBus` trace
+  event) and `unsimulated` (`{cycle, periph, feature}`, e.g. `"CR2.RELOAD"`).
+
+**AF endpoints.** A peripheral signal is its own endpoint, `mcu.I2C1_SCL`. GPIO
+closes a switch between `mcu.PB6` and it while PB6 is in AF mode with AFR = 6, and
+opens it otherwise. A pin that isn't routed (wrong MODER or AFR, or the port clock
+off so MODER never changed) leaves I2C1's lines floating with no special case, and
+the PUPDR pull stays on the pin. The G031K8's table has every I2C1 pin on the
+package, all AF6 (DS12992 Rev 4, Tables 13 and 14): PA9/PA10 (the Nucleo's D5/D4,
+labelled I2C1 in UM2591 Table 9), PB6/PB7 and PB8/PB9. Two pins routed to one
+signal are simply joined.
+
+**The controller.** One state machine, ticked every instruction while PE = 1 and
+I2C1EN = 1, so flags appear over simulated time:
+
+- An SCL period is `(SCLH + 1 + SCLL + 1) × (PRESC + 1)` cycles plus 4 for the sync
+  delays (§32.4.9; Table 173 note 2 gives 4 as their minimum), plus DNF per edge.
+  START with the address counts as 10 periods, a byte 9, a STOP 1. **Assumed:**
+  I2CCLK is the 16 MHz core clock; the analog filter delay and SDADEL/SCLDEL are not
+  counted. 100 kHz from Table 173 comes out at 9.25 µs per period instead of ~10.
+- Flag rules from RM0444: TXIS after the address ACK and again as soon as a byte is
+  copied to the shift register if another is due (Figure 303); SCL held while TXDR
+  is empty or RXDR unread (§32.4.7); the last read byte NACKed (§32.4.9); a NACK sets
+  NACKF and sends STOP whatever AUTOEND says (§32.4.9); TC with AUTOEND = 0, cleared
+  by setting START (repeated START) or STOP; START cleared once the address is sent;
+  STOP clears STOP, NACK and PECBYTE; PE = 0 resets the state, CR2
+  START/STOP/NACK/PECBYTE and the ISR flags, and sets TXE (§32.4.6); TXDR takes a
+  write only while TXE = 1 (§32.9.11); writing ISR.TXE = 1 flushes; ICR clears the
+  flags at the same bit positions, and ADDRCF also clears START; ICR reads 0.
+- **Assumed:**
+  - **BUSY** is "a START was seen" in RM0444 (§32.9.7). Here it is also set while
+    either line isn't high (floating, held low, pins not routed), and a pending
+    START waits for both lines high. That is AGENTS.md's "a bus held low reads as
+    BUSY, and START never happens": RM0444 only warns that a low incident at START
+    may deadlock the peripheral (§32.4.9).
+  - **TIMINGR** with PE = 1: RM0444 says it "must be configured" with PE = 0
+    (§32.9.5) but not what such a write does. Ignored silently, per AGENTS.md.
+  - While PE = 0, CR2's START/STOP/NACK/PECBYTE can't be set, and TXDR writes are
+    ignored (TXE is held set).
+  - Clearing PE mid-transfer puts no STOP on the bus; the target sees the next START.
+  - Gating I2C1EN off mid-transfer freezes it.
+- **Not simulated**, logged as an `unsimulated` event when the firmware sets the
+  field: interrupts (CR1 TXIE…ERRIE, so no I2C IRQ), DMA, target mode (OA1EN, OA2EN,
+  GCEN, SBC, NOSTRETCH, WUPEN, CR2.NACK), SMBus (SMBHEN, SMBDEN, ALERTEN, PECEN,
+  PECBYTE, TIMEOUTR), 10-bit addressing (ADD10) and RELOAD. With RELOAD or ADD10 set,
+  the transfer runs as if they were 0. BERR and ARLO are never set: the bus model has
+  no misplaced START/STOP and no arbitration (§7).
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's
@@ -647,6 +707,7 @@ copyright). These are the "assumed" points from §8 and §9 that RM0444 settles.
   **confirmed**.
 - **RCC_CR** (§5.4.1): power-on reset value `0x0000 0500`, **confirmed**. The SVD's
   `0x63` is wrong; `rcc.ts` overrides it.
+
 ## Open, deferred to the build step that needs them
 
 - **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and

@@ -2,7 +2,9 @@
 // definition's `peripherals` list. A peripheral file holds behavior only. Its
 // registers, offsets and reset values come from the chip's register JSON, and the
 // memory bus does address decoding, byte lanes, clock gating and event logging.
+import type { EventLog } from "../engine/events.ts";
 import type { Nets } from "../engine/nets.ts";
+import type { PartInstance } from "../parts/part.ts";
 
 /**
  * Register values by SVD register name, e.g. `regs.ODR`. Registers that share an
@@ -32,16 +34,24 @@ export interface Peripheral {
 export interface PeripheralContext {
   /** This peripheral's register values, owned by the bus. */
   readonly regs: Registers;
-  /** The circuit. The chip's pins are the endpoints "mcu.<pin>", e.g. "mcu.PA0". */
+  /**
+   * The circuit. The chip's pins are the endpoints "mcu.<pin>", e.g. "mcu.PA0".
+   * A peripheral's own signals are "mcu.<signal>", e.g. "mcu.I2C1_SCL": GPIO
+   * joins a pin to one while the pin selects it in the chip's AF table.
+   */
   readonly nets: Nets;
   /**
-   * Another peripheral's registers, live and read-only, e.g. `regsOf("GPIOB").AFRL`
-   * for I2C1 to check its pins' alternate function. Throws for an unknown name.
+   * Another peripheral's registers, live and read-only, e.g.
+   * `regsOf("RCC").APBENR1`. Throws for an unknown name.
    */
   regsOf(name: string): Readonly<Registers>;
   /** CPU cycles since reset: simulated time, at the chip's `clockHz`. */
   now(): number;
   readonly cpu: Cpu;
+  /** The circuit's mounted parts by id, read live: I2C1's bus finds its targets here. */
+  readonly parts: Iterable<readonly [id: string, part: PartInstance]>;
+  /** The event log, for events a peripheral makes itself (I2C trace). Build one only while `events.active`. */
+  readonly events: EventLog;
 }
 
 /** What a peripheral may ask of the CPU core. */
