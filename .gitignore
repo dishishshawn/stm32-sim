@@ -5,3 +5,4 @@ build/
 .claude/worktrees/
 docs/reference/
 compile_commands.json
+.cache/
