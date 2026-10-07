@@ -51,9 +51,23 @@ firmware runs its handler (ST's default handler loops forever) until the time
 is up.
 
 **`run`** prints a short summary: how the run ended, the simulated time, the PC
-as `file:line`, the `mcu.*` pin levels, and the core's log (HardFault and lockup
-messages). In text, the pins shown are those a wire in the circuit uses, or all
-of them if nothing is wired.
+as `file:line`, the `mcu.*` pin levels, the core's log (HardFault and lockup
+messages), and the diagnostics. In text, the pins shown are those a wire in the
+circuit uses, or all of them if nothing is wired.
+
+**Diagnostics** explain likely mistakes. They never change what the simulation
+does. Each is reported once, where it first happened, with a count. In text it
+is one line, `file:line: severity: message [rule]`:
+
+```
+diagnostics
+  firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.IOPBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
+```
+
+| Rule                   | Severity  | Reports                                                                                         |
+| ---------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `gpio-clock-off`       | `warning` | an access to a peripheral whose RCC clock enable bit is 0 (any clock-gated one, not only GPIO)  |
+| `unsimulated-register` | `info`    | an access to a register the simulator doesn't model yet                                         |
 
 **`inspect`** prints the same, then:
 
@@ -61,7 +75,6 @@ of them if nothing is wired.
   text, only the peripherals the firmware touched or that are simulated;
   `--json` gives every one;
 - the I2C trace (empty until I2C1 is simulated, T14);
-- diagnostics (empty until T24);
 - accesses to unsimulated registers: peripheral, register, read and write counts;
 - each part's `state()`.
 
@@ -106,25 +119,53 @@ are hex strings (`"0x08000154"`); bit-field values are numbers.
     "reason": "undefined instruction 0xdeff"
   },
   "pins": { "PA0": "floating", "PA13": "high", "PA14": "low", "...": "..." },
-  "log": ["HardFault at 0x08000154: undefined instruction 0xdeff"]
+  "log": ["HardFault at 0x08000154: undefined instruction 0xdeff"],
+  "diagnostics": []
 }
 ```
 
-| Field     | Meaning                                                                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `command` | `"run"` or `"inspect"`                                                                                                                   |
-| `elf`     | the ELF path                                                                                                                             |
-| `circuit` | the circuit path, or `null`                                                                                                              |
-| `status`  | `"completed"`, `"breakpoint"`, `"hardfault"` or `"lockup"`                                                                               |
-| `message` | one line for a person, e.g. the line above                                                                                               |
-| `seconds` | simulated time at the end: `cycles` / 16 MHz. A run stops at the first instruction at or past `--for`                                    |
-| `cycles`  | CPU cycles since reset                                                                                                                   |
-| `pc`      | the PC at the end                                                                                                                        |
-| `at`      | the PC as `file:line`, else `function+0xoffset`, else the address                                                                        |
-| `halt`    | why the CPU stopped early: `{ "kind": "lockup" \| "breakpoint", "reason": "BKPT #7" }`, else `null`                                      |
-| `fault`   | the HardFault the CPU is in: the faulting instruction (`pc`, the PC stacked on exception entry), its `at`, and the `reason`. Else `null` |
-| `pins`    | every package pin's level: `"high"`, `"low"`, `"floating"` or `"conflict"`                                                               |
-| `log`     | the CPU core's messages, oldest first (at most 100)                                                                                      |
+| Field         | Meaning                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`     | `"run"` or `"inspect"`                                                                                                                   |
+| `elf`         | the ELF path                                                                                                                             |
+| `circuit`     | the circuit path, or `null`                                                                                                              |
+| `status`      | `"completed"`, `"breakpoint"`, `"hardfault"` or `"lockup"`                                                                               |
+| `message`     | one line for a person, e.g. the line above                                                                                               |
+| `seconds`     | simulated time at the end: `cycles` / 16 MHz. A run stops at the first instruction at or past `--for`                                    |
+| `cycles`      | CPU cycles since reset                                                                                                                   |
+| `pc`          | the PC at the end                                                                                                                        |
+| `at`          | the PC as `file:line`, else `function+0xoffset`, else the address                                                                        |
+| `halt`        | why the CPU stopped early: `{ "kind": "lockup" \| "breakpoint", "reason": "BKPT #7" }`, else `null`                                      |
+| `fault`       | the HardFault the CPU is in: the faulting instruction (`pc`, the PC stacked on exception entry), its `at`, and the `reason`. Else `null` |
+| `pins`        | every package pin's level: `"high"`, `"low"`, `"floating"` or `"conflict"`                                                               |
+| `log`         | the CPU core's messages, oldest first (at most 100)                                                                                      |
+| `diagnostics` | likely mistakes, in order of first occurrence (below)                                                                                    |
+
+Each diagnostic:
+
+```json
+{
+  "rule": "gpio-clock-off",
+  "severity": "warning",
+  "message": "wrote GPIOB->ODR while RCC->IOPENR.IOPBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored",
+  "periph": "GPIOB",
+  "reg": "ODR",
+  "count": 3,
+  "cycle": 190,
+  "pc": "0x0800018e",
+  "at": "firmware/clock-off/main.c:25"
+}
+```
+
+| Field                  | Meaning                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `rule`                 | the rule's id                                                                                                                  |
+| `severity`             | `"warning"`: likely a mistake in the firmware. `"info"`: a limit of the simulator                                              |
+| `message`              | one line for a person                                                                                                          |
+| `periph`, `reg`, `pin` | what it is about, each only where it applies: a register (`reg` is its address where it has no name), or a pin                 |
+| `count`                | how many times it happened. The other fields describe the first time                                                           |
+| `cycle`                | the CPU cycle                                                                                                                  |
+| `pc`, `at`             | the instruction that made the access, and its `file:line` as the top-level `at` gives it. `null` when no instruction caused it |
 
 ### `inspect`
 
@@ -141,7 +182,6 @@ Everything `run` has, plus:
     }
   },
   "i2c": [],
-  "diagnostics": [],
   "unsimulated": [
     { "periph": "SCS", "reg": "0xe000e010", "reads": 2, "writes": 1 }
   ],
@@ -153,7 +193,6 @@ Everything `run` has, plus:
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `registers`   | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)  |
 | `i2c`         | the I2C bus events from the event log, in order (filled once I2C1 is simulated, T14)                                                                       |
-| `diagnostics` | diagnostic findings (filled from T24)                                                                                                                      |
 | `unsimulated` | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space) |
 | `parts`       | `state()` of each part that has one, by part id                                                                                                            |
 

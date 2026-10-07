@@ -17,6 +17,7 @@ import { MemoryBus } from "./memory-bus.ts";
 import type { Chip } from "./memory-bus.ts";
 import { Nets } from "./nets.ts";
 import type { Level } from "./nets.ts";
+import type { Registers } from "../peripherals/peripheral.ts";
 
 /** What parseCircuit() checks a circuit against: the part and chip registration lists. */
 export const catalog: CircuitCatalog = {
@@ -85,6 +86,17 @@ export interface Fault {
   at: string;
   /** E.g. "undefined instruction 0xdeff", "bus fault at 0x30000000". */
   reason: string;
+}
+
+/** Read-only views of the loaded board, for observers such as diagnostics. Nothing here changes the simulation. */
+export interface BoardView {
+  readonly chip: Chip;
+  /** Stored register values by peripheral and register name, live. Reading them has no side effects. */
+  readonly regs: Readonly<Record<string, Readonly<Registers>>>;
+  /** An endpoint's net level, e.g. level("mcu.PB6"). */
+  level(endpoint: string): Level;
+  /** A PC as the snapshot's `at` gives it. */
+  where(pc: number): string;
 }
 
 const LOG_LIMIT = 100;
@@ -284,6 +296,17 @@ export class Engine {
       ),
       fault: core.IPSR === HARDFAULT ? this.#fault : null,
       log: [...this.#log],
+    };
+  }
+
+  /** Read-only views of the board loaded now; a later load() makes a new board. */
+  view(): BoardView {
+    const { chip, elf, nets, bus } = this.#loaded();
+    return {
+      chip,
+      regs: bus.regs,
+      level: (endpoint) => nets.level(endpoint),
+      where: (pc) => where(elf, pc),
     };
   }
 
