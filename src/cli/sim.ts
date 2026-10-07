@@ -7,6 +7,8 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
 import { chips } from "../chips/index.ts";
+import { rules } from "../diagnostics/index.ts";
+import { diagnose } from "../diagnostics/rule.ts";
 import { parseCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
 import { catalog, Engine } from "../engine/engine.ts";
@@ -83,6 +85,7 @@ function main(argv: string[]): number {
     : { chip: Object.keys(chips)[0], parts: [], wires: [] };
   const engine = new Engine();
   input(elfPath, () => engine.load(elf, circuit));
+  const diagnosed = diagnose(engine.events, engine.view(), rules);
 
   const inspect = command === "inspect";
   const touched = new Set<string>();
@@ -119,6 +122,11 @@ function main(argv: string[]): number {
     at: relAt(s.fault.at),
   };
   const at = relAt(s.at);
+  const diagnostics = diagnosed().map((d) => ({
+    ...d,
+    pc: d.pc === null ? null : hex(d.pc),
+    at: d.at === null ? null : relAt(d.at),
+  }));
   const status =
     s.halt?.kind === "lockup"
       ? "lockup"
@@ -149,10 +157,10 @@ function main(argv: string[]): number {
     fault,
     pins: s.pins,
     log: s.log,
+    diagnostics,
     ...(inspect && {
       registers: registers(chip, s),
       i2c,
-      diagnostics: [],
       unsimulated: [...unsimulated.values()],
       parts: s.parts,
     }),
@@ -182,6 +190,12 @@ function main(argv: string[]): number {
       6,
     ).map((line, i) => `${i ? "       " : "pins   "} ${line.join(" ")}`),
     ...s.log.map((m) => `log     ${m}`),
+    `diagnostics${diagnostics.length ? "" : "  (none)"}`,
+    ...diagnostics.map(
+      (d) =>
+        `  ${d.at ?? `cycle ${d.cycle}`}: ${d.severity}: ${d.message} [${d.rule}]` +
+        (d.count > 1 ? ` (${d.count} times)` : ""),
+    ),
   ];
   if (inspect) {
     const shown = new Set([...touched, ...chip.peripherals.map((p) => p.name)]);
@@ -197,7 +211,6 @@ function main(argv: string[]): number {
     out.push(
       `i2c${i2c.length ? "" : "          (none)"}`,
       ...i2c.map((e) => `  ${JSON.stringify(e)}`),
-      "diagnostics  (none)",
       `unsimulated${unsimulated.size ? "" : "  (none)"}`,
       ...[...unsimulated.values()].map(
         (u) => `  ${u.periph}.${u.reg}  ${u.reads} reads, ${u.writes} writes`,
