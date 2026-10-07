@@ -3,7 +3,7 @@
 // contract: commands, flags, JSON shapes and exit codes. Changing any of them
 // is a breaking change.
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
@@ -330,6 +330,10 @@ function ui(
           circuitPath
             ? readFileSync(circuitPath, "utf8")
             : serializeCircuit(circuit),
+        // The page's Save writes this file and no other (T31).
+        save: circuitPath
+          ? (text) => writeFileSync(circuitPath, text)
+          : undefined,
       }),
     )
     .then(

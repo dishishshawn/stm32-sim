@@ -970,7 +970,9 @@ stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
   top-left corner in these px. The canvas is shown at `zoom: 1.5`; a pointer
   position (T31) divides by it.
 - The board is at (0, 0). A part without `pos` goes in a grid below it: 4
-  columns of 160 × 110 px cells, in circuit order. No packing, no measuring.
+  columns of 160 × 110 px cells, part i in cell i. No packing, no measuring.
+  So a part moved out of its cell (T31) leaves a gap, and the rest stay put,
+  in the page and after Save and reload.
 - Each part is a `<figure data-part="<id>">` with its id as `<figcaption>`.
   Wokwi elements for `led`, `7segment`, `pushbutton` and `resistor`; T29's SVG
   for `tc74` and `mcp23017`; a labelled box for a part with neither (TMP102,
@@ -990,6 +992,30 @@ stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
   frame), the button and slider are native controls, `:focus-visible` gets a
   2 px outline, and colours are CSS variables for light and dark
   (`prefers-color-scheme`).
+
+**Editing (T31).** In `main.ts`, which owns the drawing.
+
+- The palette has one button per registered part type. Click adds the part
+  in the first cell no part overlaps; dragging the button onto the canvas
+  (native drag and drop) adds it there. The id is the type plus a number,
+  starting with a letter, with `_` after a type ending in a digit: `led1`,
+  `segment1`, `tc74_1`. Props are `{}`, so the defaults apply, as in a
+  hand-written file.
+- A part moves by pointer drag (deltas divided by the canvas zoom) or the
+  arrow keys on the focused figure, snapped to the 0.1 in grid (9.6 px,
+  rounded to 0.1 px so the file says `28.8`). Only a moved or added part gets
+  a `pos`. Delete or Backspace asks in a `<dialog>` and removes the part and
+  every wire with one of its endpoints.
+- Adding or removing restarts the simulation: `engine.load()` on the edited
+  circuit (the same object, so panels' `ui.circuit` stays current) with the
+  ELF re-fetched, then a redraw. The header says so. Moving doesn't: `pos`
+  isn't simulated.
+- Save `PUT`s `serializeCircuit()` to `/circuit`. The server writes only
+  `serializeCircuit(parseCircuit(body))`, only to the `--circuit` file (409
+  without one), and only for a request whose `Origin` is its own (403
+  otherwise). Another site's page can't `PUT` here anyway: that needs a CORS
+  preflight the server never grants. A body `parseCircuit` rejects gets 400
+  and no write. Saving an unchanged canonical file is byte-identical.
 
 **Headless UI tests: `playwright-core` driven from `node:test`.**
 

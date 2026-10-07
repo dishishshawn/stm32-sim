@@ -3,11 +3,15 @@
 // §15). Localhost only, nothing fetched from anywhere else.
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { stripTypeScriptTypes } from "node:module";
 import { dirname, isAbsolute, join, sep } from "node:path";
+import { text } from "node:stream/consumers";
 import { fileURLToPath } from "node:url";
 import { loadElf } from "../engine/elf.ts";
+import { parseCircuit, serializeCircuit } from "../engine/circuit.ts";
+import { catalog } from "../engine/engine.ts";
 
 const SRC = fileURLToPath(new URL("../", import.meta.url));
 const INDEX = join(SRC, "ui/index.html");
@@ -37,6 +41,8 @@ export interface UiInput {
   /** Read on every request, so a reload picks up a rebuilt ELF or an edited circuit. */
   elf(): Uint8Array;
   circuit(): string;
+  /** Writes the --circuit file. Absent without one: there is nowhere to save. */
+  save?(text: string): void;
 }
 
 /** Serves the UI on 127.0.0.1:`port` (0: any free port). Resolves to its URL. */
@@ -53,6 +59,10 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
     }
     // Dot segments are already resolved here, and %2F isn't decoded.
     const path = new URL(req.url!, "http://localhost").pathname;
+    if (req.method === "PUT" && path === "/circuit") {
+      void save(req, res, input);
+      return;
+    }
     let type = JS;
     let body: string | Uint8Array;
     try {
@@ -130,4 +140,40 @@ function sourceFile(elf: Uint8Array, file: string | null): string {
   if (!file || !isAbsolute(file) || !loadElf(elf).sources().includes(file))
     throw Object.assign(new Error("not found"), { code: "ENOENT" });
   return file;
+}
+
+// --- T31: Save. The page PUTs the circuit to /circuit. --------------------
+// - Only from this server's own page: the Origin must match the Host. A page
+//   from another site can't send a PUT here at all (it needs a CORS preflight,
+//   and this server never grants CORS), and this refuses one that tries.
+// - Only a body parseCircuit accepts, written as serializeCircuit gives it.
+// - Only to the file given with --circuit: no path comes from the client.
+async function save(
+  req: IncomingMessage,
+  res: ServerResponse,
+  input: UiInput,
+) {
+  const reply = (status: number, message = "") =>
+    res
+      .writeHead(status, {
+        ...HEADERS,
+        "Content-Type": "text/plain; charset=utf-8",
+      })
+      .end(message);
+  if (req.headers.origin !== `http://${req.headers.host}`)
+    return reply(403, "only the sim ui page can save");
+  if (!input.save)
+    return reply(409, "sim ui was started without --circuit: nowhere to save");
+  let circuit: string;
+  try {
+    circuit = serializeCircuit(parseCircuit(await text(req), catalog));
+  } catch (e) {
+    return reply(400, (e as Error).message);
+  }
+  try {
+    input.save(circuit);
+  } catch (e) {
+    return reply(500, (e as Error).message);
+  }
+  reply(204);
 }
