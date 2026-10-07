@@ -11,6 +11,7 @@ import type {
   ClockGate,
   Cpu,
   Peripheral,
+  PeripheralContext,
   PeripheralInstance,
   Registers,
 } from "../peripherals/peripheral.ts";
@@ -71,6 +72,11 @@ export interface MemoryBusOptions {
   readonly nets: Nets;
   /** The core, passed to each peripheral. */
   readonly cpu: Cpu;
+  /**
+   * The circuit's parts by id, passed to each peripheral and read live, so the
+   * engine can mount them after building the bus. Default: none.
+   */
+  readonly parts?: PeripheralContext["parts"];
 }
 
 // The Cortex-M system control space (SysTick, NVIC, SCB). Not in the SVD.
@@ -117,7 +123,10 @@ export class MemoryBus implements Bus {
   readonly #events: EventLog;
   readonly #now: MemoryBusOptions["now"];
 
-  constructor(chip: Chip, { events, now, nets, cpu }: MemoryBusOptions) {
+  constructor(
+    chip: Chip,
+    { events, now, nets, cpu, parts = [] }: MemoryBusOptions,
+  ) {
     this.#events = events;
     this.#now = now;
     this.#flashBase = chip.flash.base >>> 0;
@@ -158,6 +167,8 @@ export class MemoryBus implements Bus {
         regsOf,
         now: () => now().cycle,
         cpu,
+        parts,
+        events,
       });
       const hooks = { ...instance.read, ...instance.write };
       for (const reg of Object.keys(hooks)) {

@@ -89,11 +89,13 @@ export class Engine {
       if (this.events.active)
         this.events.emit({ kind: "net", cycle: cycle(), endpoint, level });
     });
+    const parts = new Map<string, PartInstance>();
     const bus = new MemoryBus(chip, {
       events: this.events,
       now: () => ({ cycle: cycle(), pc: this.#pc }),
       nets,
       cpu: { setPending: (exception) => setPending(core!, exception) },
+      parts, // filled below; I2C1 reads it live
     });
 
     // Each segment at its load address. Only the file's bytes, not memSize:
@@ -122,7 +124,6 @@ export class Engine {
       this.#break = { kind: "breakpoint", reason: `BKPT #${code}` };
     };
 
-    const parts = new Map<string, PartInstance>();
     for (const p of circuit.parts) {
       const type = partTypes.find((t) => t.type === p.type);
       if (!type) throw new Error(`unknown part type "${p.type}"`);
