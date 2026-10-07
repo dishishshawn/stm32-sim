@@ -14,6 +14,7 @@ test("RCC_CR: HSI16 is on and ready, and the PLL never gets ready", () => {
     events: new EventLog(),
     now: () => ({ cycle: 0, pc: 0 }),
     nets: new Nets(),
+    cpu: { setPending() {} },
   });
   assert.equal(bus.readUint32(RCC_CR), HSION_HSIRDY);
   bus.writeUint32(RCC_CR, PLLON | (1 << 25)); // also tries to clear HSION and set PLLRDY

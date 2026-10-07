@@ -39,11 +39,28 @@ export interface PeripheralContext {
    * for I2C1 to check its pins' alternate function. Throws for an unknown name.
    */
   regsOf(name: string): Readonly<Registers>;
+  /** CPU cycles since reset: simulated time, at the chip's `clockHz`. */
+  now(): number;
+  readonly cpu: Cpu;
+}
+
+/** What a peripheral may ask of the CPU core. */
+export interface Cpu {
+  /**
+   * Pend an exception, as the NVIC or SCB would: 2 NMI, 14 PendSV, 15 SysTick,
+   * 16 + n for IRQ n. The core takes it when its priority and masks allow.
+   */
+  setPending(exception: number): void;
 }
 
 export interface PeripheralInstance {
   /** Chip reset. The bus has already put every register back to its reset value. */
   reset?(): void;
+  /**
+   * `cycles` CPU cycles have passed. The engine calls it after every instruction
+   * (and per slice while the core sleeps), in registration order.
+   */
+  tick?(cycles: number): void;
   /** By register name: the value the CPU reads. Default: `regs[name]`. */
   readonly read?: Readonly<Record<string, () => number>>;
   /**

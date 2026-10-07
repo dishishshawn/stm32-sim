@@ -9,6 +9,7 @@ import type { EventLog, Flag } from "./events.ts";
 import type { Nets } from "./nets.ts";
 import type {
   ClockGate,
+  Cpu,
   Peripheral,
   PeripheralInstance,
   Registers,
@@ -64,10 +65,12 @@ export interface Chip {
 
 export interface MemoryBusOptions {
   readonly events: EventLog;
-  /** The current cycle and PC. Called only when an event is emitted. */
+  /** The current cycle and PC. Called when an event is emitted, and by a peripheral's `now()`. */
   readonly now: () => { cycle: number; pc: number };
   /** The circuit, passed to each peripheral. */
   readonly nets: Nets;
+  /** The core, passed to each peripheral. */
+  readonly cpu: Cpu;
 }
 
 // The Cortex-M system control space (SysTick, NVIC, SCB). Not in the SVD.
@@ -99,7 +102,7 @@ export class MemoryBus implements Bus {
   readonly sram: Uint8Array;
   /** Every SVD register's value, by peripheral and register name. */
   readonly regs: Readonly<Record<string, Registers>>;
-  /** Called by BKPT and UDF. The engine sets it. */
+  /** Called by BKPT (UDF is a HardFault). The engine sets it. */
   onBreak = (code: number): void => void code;
 
   readonly #flashBase: number;
@@ -110,10 +113,11 @@ export class MemoryBus implements Bus {
   readonly #blocks = new Map<number, string>(); // 1 KB block → peripheral name
   readonly #resetValues: [Registers, Registers][] = [];
   readonly #instances: PeripheralInstance[] = [];
+  readonly #tickers: ((cycles: number) => void)[] = [];
   readonly #events: EventLog;
   readonly #now: MemoryBusOptions["now"];
 
-  constructor(chip: Chip, { events, now, nets }: MemoryBusOptions) {
+  constructor(chip: Chip, { events, now, nets, cpu }: MemoryBusOptions) {
     this.#events = events;
     this.#now = now;
     this.#flashBase = chip.flash.base >>> 0;
@@ -148,7 +152,13 @@ export class MemoryBus implements Bus {
 
     for (const p of chip.peripherals) {
       const regs = regsOf(p.name);
-      const instance = p.create({ regs, nets, regsOf });
+      const instance = p.create({
+        regs,
+        nets,
+        regsOf,
+        now: () => now().cycle,
+        cpu,
+      });
       const hooks = { ...instance.read, ...instance.write };
       for (const reg of Object.keys(hooks)) {
         if (!Object.hasOwn(regs, reg))
@@ -165,6 +175,7 @@ export class MemoryBus implements Bus {
         slot.gate = gate;
       }
       this.#instances.push(instance);
+      if (instance.tick) this.#tickers.push(instance.tick.bind(instance));
     }
     this.reset();
   }
@@ -173,6 +184,11 @@ export class MemoryBus implements Bus {
   reset(): void {
     for (const [regs, reset] of this.#resetValues) Object.assign(regs, reset);
     for (const p of this.#instances) p.reset?.();
+  }
+
+  /** `cycles` CPU cycles have passed: calls each peripheral's tick(), in registration order. */
+  tick(cycles: number): void {
+    for (const tick of this.#tickers) tick(cycles);
   }
 
   readUint8(address: number): number {

@@ -20,6 +20,7 @@ function setup(nets = new Nets(), iopenr = 0b11) {
     events: new EventLog(),
     now: () => ({ cycle: 0, pc: 0 }),
     nets,
+    cpu: { setPending() {} },
   });
   bus.writeUint32(RCC_IOPENR, iopenr);
   /** Read-modify-write a 2-bit field (MODER, PUPDR) for pin n, as firmware does. */

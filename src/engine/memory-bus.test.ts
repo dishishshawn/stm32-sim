@@ -17,12 +17,15 @@ const I2C1_TIMINGR = 0x40005410;
 function setup(...peripherals: Peripheral[]) {
   const events = new EventLog();
   const seen: RegEvent[] = [];
-  events.subscribe((e) => seen.push(e));
+  events.subscribe((e) => {
+    if (e.kind === "reg") seen.push(e);
+  });
   const chip = { ...stm32g031k8, peripherals };
   const bus = new MemoryBus(chip, {
     events,
     now: () => ({ cycle: 42, pc: 0x08000100 }),
     nets: new Nets(),
+    cpu: { setPending() {} },
   });
   return { bus, seen };
 }
@@ -208,10 +211,37 @@ test("an unsubscribed listener hears nothing more", () => {
     events,
     now: () => ({ cycle: 0, pc: 0 }),
     nets: new Nets(),
+    cpu: { setPending() {} },
   });
   bus.readUint32(I2C1_OAR2);
   off();
   assert.equal(events.active, false);
   bus.readUint32(I2C1_OAR2);
   assert.equal(seen.length, 1);
+});
+
+test("a peripheral gets tick(cycles) from the bus, now() in cycles, and the cpu", () => {
+  const seen: number[] = [];
+  const pended: number[] = [];
+  const timer: Peripheral = {
+    name: "TIM2",
+    create: (ctx) => ({
+      tick(cycles) {
+        seen.push(cycles, ctx.now());
+        ctx.cpu.setPending(16 + 15);
+      },
+    }),
+  };
+  const bus = new MemoryBus(
+    { ...stm32g031k8, peripherals: [plainGpioA, timer] },
+    {
+      events: new EventLog(),
+      now: () => ({ cycle: 42, pc: 0 }),
+      nets: new Nets(),
+      cpu: { setPending: (n) => pended.push(n) },
+    },
+  );
+  bus.tick(3);
+  assert.deepEqual(seen, [3, 42]);
+  assert.deepEqual(pended, [31]);
 });

@@ -530,6 +530,48 @@ driven (`mcu.PB12` stays unconnected).
   example, is no longer flagged `unsimulated`. Revisit with a per-register flag if a
   diagnostic needs it.
 
+## 10. Engine run loop (T9)
+
+`src/engine/engine.ts`. `load(elfBytes, circuit)`, `runFor(seconds)`, `step()`,
+`snapshot()`, and the `events` log.
+
+- **Time is CPU cycles** (`core.cycles`) at the chip's `clockHz`. `runFor` takes
+  simulated **seconds**, as the CLI's `--for 2s` does, and stops at the first
+  instruction boundary at or past them (an instruction takes a few cycles), or early on
+  lockup or BKPT. Nothing reads the wall clock.
+- **Contract additions** (agreed at the T7 gate): `PeripheralInstance.tick?(cycles)`,
+  `PeripheralContext.now()` (cycles) and `PeripheralContext.cpu.setPending(exception)`
+  (2 NMI, 14 PendSV, 15 SysTick, 16 + n for IRQ n), through
+  `MemoryBusOptions.cpu`. `setPending` does what upstream rp2040js's NVIC and ICSR
+  do: `core.setInterrupt(n, true)`, or the core's `pendingNMI`/`pendingPendSV`/
+  `pendingSystick` plus `interruptsUpdated`.
+- **Peripheral ticks run after every instruction**, with that instruction's cycles,
+  in registration order, and only for peripherals that define `tick`. That is exact
+  and costs nothing until a peripheral ticks. **Part ticks run every 1 ms** of
+  simulated time, on fixed cycle boundaries (16,000 cycles), with
+  `tick(0.001)`.
+- **WFI/WFE:** while the core waits and nothing is pending, time jumps to the next
+  1 ms part-tick boundary or the end of the run, whichever is first, and peripherals
+  get that slice in one `tick`. A pending exception wakes the core at the next slice,
+  so a wake-up can be up to 1 ms late. The MVP firmware doesn't sleep; if WFI firmware
+  needs better, peripherals can report their next deadline.
+- **BKPT** (§2) stops the run with the PC rewound onto the BKPT, so the snapshot
+  shows its line. Running or stepping again executes it again, as a debugger does
+  until the PC is moved.
+- **Net changes are events** (`kind: "net"`, with the cycle, endpoint and level), so
+  tests and the UI see pins change without polling.
+- **The snapshot** has the PC as `file:line` (else `function+0xoffset`, else the
+  address), each package pin's level, every register's _stored_ value (so taking it
+  has no read side effects), `cycles` and `seconds`, `halt` (`lockup` or `breakpoint`
+  with its reason, else null), and `state()` of each part that has one.
+- `src/chips/index.ts` is the chip registration list, which `load` looks
+  `circuit.chip` up in; `catalog` (in `engine.ts`) is the parts and chips list for
+  `parseCircuit`.
+- Not done: the core's `logger` (HardFault and lockup messages) still goes to the
+  console; the lockup reason is in the snapshot.
+- Speed: blink runs at about 4.2 simulated seconds per wall-clock second (Node 24,
+  this laptop).
+
 ## Open, deferred to the build step that needs them
 
 - **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
