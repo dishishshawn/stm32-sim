@@ -1,13 +1,15 @@
 // The headless engine: one board (chip, circuit and firmware) run in simulated
 // time. The CLI and the UI are thin layers over it. Time is CPU cycles at the
-// chip's clockHz and nothing reads the wall clock, so the same ELF and circuit
-// always give the same run. Choices are recorded in docs/decisions.md §10.
+// chip's clockHz. Only runRealtime() reads the wall clock, and only to wait, so
+// the same ELF and circuit always give the same run. Choices are recorded in
+// docs/decisions.md §10 and §11.
 import { chips } from "../chips/index.ts";
 import { CortexM0Core } from "../cpu/cortex-m0-core.ts";
 import { parts as partTypes } from "../parts/index.ts";
 import { mountPart } from "../parts/part.ts";
 import type { PartInstance } from "../parts/part.ts";
 import type { Circuit, CircuitCatalog } from "./circuit.ts";
+import { coreCpu } from "./core-cpu.ts";
 import { loadElf } from "./elf.ts";
 import type { Elf } from "./elf.ts";
 import { EventLog } from "./events.ts";
@@ -26,6 +28,8 @@ export const catalog: CircuitCatalog = {
 
 /** Parts' tick(seconds) runs once per this much simulated time. */
 const PART_TICK_SECONDS = 0.001;
+/** runRealtime() checks the wall clock once per this much simulated time. */
+const REALTIME_SLICE_SECONDS = 0.01;
 
 /** Why the CPU stopped. */
 export interface Halt {
@@ -113,7 +117,7 @@ export class Engine {
       events: this.events,
       now: () => ({ cycle: cycle(), pc: this.#pc }),
       nets,
-      cpu: { setPending: (exception) => setPending(core!, exception) },
+      cpu: coreCpu(() => core!),
     });
 
     // Each segment at its load address. Only the file's bytes, not memSize:
@@ -191,6 +195,25 @@ export class Engine {
       this.#advance(b, end);
   }
 
+  /**
+   * runFor() at real-time speed: runs `seconds` of simulated time in 10 ms slices
+   * and, after each, waits until the wall clock has caught up. The simulation
+   * itself is the same as runFor's. If it is slower than real time it never waits.
+   */
+  async runRealtime(seconds: number): Promise<void> {
+    const b = this.#loaded();
+    const { clockHz } = b.chip;
+    const start = { cycles: b.core.cycles, ms: performance.now() };
+    const end = start.cycles + Math.round(seconds * clockHz);
+    do {
+      const left = (end - b.core.cycles) / clockHz;
+      this.runFor(Math.min(left, REALTIME_SLICE_SECONDS));
+      const simMs = ((b.core.cycles - start.cycles) / clockHz) * 1000;
+      const ahead = simMs - (performance.now() - start.ms);
+      if (ahead > 0) await new Promise((r) => setTimeout(r, ahead));
+    } while (b.core.cycles < end && !b.core.lockedUp && !this.#break);
+  }
+
   /** Executes one instruction. While the core sleeps (WFI), advances to the next part tick instead. */
   step(): void {
     const b = this.#loaded();
@@ -263,17 +286,6 @@ export class Engine {
       for (const p of b.parts.values()) p.tick?.(b.partTick / b.chip.clockHz);
     }
   }
-}
-
-/** What the NVIC (IRQs) or the SCB's ICSR (NMI, PendSV, SysTick) does to pend an exception. */
-function setPending(core: CortexM0Core, exception: number): void {
-  if (exception >= 16 && exception < 16 + core.irqCount)
-    core.setInterrupt(exception - 16, true);
-  else if (exception === 15) core.pendingSystick = true;
-  else if (exception === 14) core.pendingPendSV = true;
-  else if (exception === 2) core.pendingNMI = true;
-  else throw new Error(`exception ${exception} can't be set pending`);
-  core.interruptsUpdated = true;
 }
 
 /** The PC as "file:line", else "function+0xoffset", else the bare address. */

@@ -51,6 +51,12 @@ export interface Cpu {
    * 16 + n for IRQ n. The core takes it when its priority and masks allow.
    */
   setPending(exception: number): void;
+  /** Un-pend it (ICSR's PENDSTCLR for SysTick). */
+  clearPending(exception: number): void;
+  /** Whether it is pending (ICSR's PENDSTSET reads this for SysTick). */
+  isPending(exception: number): boolean;
+  /** A system handler's priority, 0 (highest) to 3, as SHPR3 sets it for 14 PendSV and 15 SysTick. */
+  setPriority(exception: number, priority: number): void;
 }
 
 export interface PeripheralInstance {

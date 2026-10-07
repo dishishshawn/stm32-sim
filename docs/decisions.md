@@ -544,7 +544,7 @@ driven (`mcu.PB12` stays unconnected).
 - **Time is CPU cycles** (`core.cycles`) at the chip's `clockHz`. `runFor` takes
   simulated **seconds**, as the CLI's `--for 2s` does, and stops at the first
   instruction boundary at or past them (an instruction takes a few cycles), or early on
-  lockup or BKPT. Nothing reads the wall clock.
+  lockup or BKPT. Nothing reads the wall clock (`runRealtime`, §11, only waits on it).
 - **Contract additions** (agreed at the T7 gate): `PeripheralInstance.tick?(cycles)`,
   `PeripheralContext.now()` (cycles) and `PeripheralContext.cpu.setPending(exception)`
   (2 NMI, 14 PendSV, 15 SysTick, 16 + n for IRQ n), through
@@ -581,6 +581,56 @@ driven (`mcu.PB12` stays unconnected).
 - Speed: blink runs at about 4.2 simulated seconds per wall-clock second (Node 24,
   this laptop).
 
+## 11. SysTick, SCB and real-time speed (T12)
+
+`src/peripherals/systick.ts`, `src/peripherals/scb.ts`, `src/engine/core-cpu.ts`,
+`Engine.runRealtime`.
+
+- **Registers.** The SVD has no SysTick or SCB (T4), so each file exports its
+  register-map entry, hand-written from the ARMv6-M ARM (B3.3 SysTick, B3.2 SCB) in
+  the JSON's shape and with CMSIS names (`SysTick.CTRL/LOAD/VAL/CALIB`,
+  `SCB.ICSR/SHPR3`). The chip definition spreads them into its `registers`, so the
+  bus, the snapshot and a register view see them like SVD registers, named bits
+  included. SysTick's takes the chip's CALIB value.
+- **SysTick** counts in `tick(cycles)` with arithmetic, not a loop, so a 1 ms WFI
+  slice costs the same as one instruction. From 0 the next clock reloads LOAD, so a
+  round is LOAD + 1 clocks and LOAD = 0 holds the counter at 0. COUNTFLAG sets on
+  each 1 → 0 step, clears when CTRL is read and on any VAL write, and ignores CTRL
+  writes. TICKINT pends exception 15; several wraps in one tick pend it once, as
+  the hardware's single pending bit would. Enabling doesn't load LOAD: the count
+  starts from VAL, which is why the init sequence clears VAL first.
+- **STM32G0 facts, from RM0444 Rev 6:** CLKSOURCE = 0 counts HCLK/8 (§5.2, clock
+  tree); CALIB is 1000 (§12.2: "set to 1000, which gives a reference time base of
+  1 ms with the SysTick clock set to 1 MHz"). **Assumed:** NOREF and SKEW read 0
+  (RM0444 gives only the value; PM0223 wasn't checked), and CTRL, LOAD and VAL
+  reset to 0 (the ARMv6-M ARM leaves LOAD and VAL UNKNOWN and CLKSOURCE's reset
+  IMPLEMENTATION DEFINED). The HCLK/8 residue carries across ticks, so CLKSOURCE = 0
+  is exactly 8× slower.
+- **SCB:** only ICSR's PENDSTSET/PENDSTCLR and SHPR3 (PRI_14 and PRI_15, top two
+  bits each). PENDSTSET reads 1 while SysTick is pending; set wins if both bits
+  are written (UNPREDICTABLE on hardware). Every other SCB address, and ICSR's other
+  bits, still read 0 and ignore writes; the other addresses are still logged as
+  `SCS`/`unsimulated`. ICSR itself is now a simulated register, so a PENDSVSET
+  write is ignored without the `unsimulated` flag (§9's per-register flag would fix
+  it).
+- **Contract addition:** `Cpu` gained `clearPending`, `isPending` and
+  `setPriority(exception, priority)`, next to `setPending`. `coreCpu()` in
+  `src/engine/core-cpu.ts` implements all four on the core, as upstream's
+  `ppb.ts` did (priority goes into the core's `SHPR3`, for 14 and 15 only). Test
+  stubs of `Cpu` need all four.
+- **Speed: `max` is `runFor(seconds)`, unchanged and synchronous; `realtime` is
+  `await runRealtime(seconds)`.** It runs 10 ms slices of simulated time through
+  `runFor` and, after each, `setTimeout`s until the wall clock (`performance.now()`,
+  measured from the call) has caught up. Both are globals in Node and browsers, so
+  the engine still imports neither. The simulation is identical in both speeds:
+  the wall clock only decides when to wait. If the simulation is slower than real
+  time it never waits and doesn't yield to the event loop. It stops early on a
+  lockup or BKPT, as `runFor` does. No pause or cancel yet; the UI can add an
+  `AbortSignal` when it needs one. Measured: 0.5 s simulated took 500.1 ms.
+- **Cost:** SysTick ticks after every instruction even when disabled. Blink went
+  from 3.65 to 3.16 simulated seconds per wall second (this laptop, same run);
+  the SysTick firmware runs at about 2.2.
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's
@@ -597,7 +647,6 @@ copyright). These are the "assumed" points from §8 and §9 that RM0444 settles.
   **confirmed**.
 - **RCC_CR** (§5.4.1): power-on reset value `0x0000 0500`, **confirmed**. The SVD's
   `0x63` is wrong; `rcc.ts` overrides it.
-
 ## Open, deferred to the build step that needs them
 
 - **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
