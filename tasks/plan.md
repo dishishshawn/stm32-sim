@@ -199,7 +199,8 @@ The size labels are XS, S, M and L, from the skill's sizing table. Full cards ar
 | T22 | Fault tests: wrong GPIO clock; no pull-ups                            | S    | T17                |
 | T23 | Fault tests: RESET floating; segments off by one; wrong polarity      | M    | T21                |
 | T24 | Diagnostics framework, plus GPIO-clock and unsimulated-register rules | M    | T10                |
-| T25 | I2C diagnostic rules                                                  | M    | T14, T24           |
+| T25 | I2C diagnostic rules                                                  | M    | T14, T24, T38      |
+| T38 | Register and field names follow the CMSIS header (`GPIOBEN`, `MODE0`) | M    | T4                 |
 
 **Checkpoint 3 (acceptance 2 and 3).**
 

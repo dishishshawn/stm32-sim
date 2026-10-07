@@ -587,6 +587,9 @@ driven (`mcu.PB12` stays unconnected).
 - Speed: blink runs at about 4.2 simulated seconds per wall-clock second (Node 24,
   this laptop).
 
+- `Engine.readSram(address, length)` copies SRAM bytes with no side effects, e.g. a
+  firmware global at its ELF symbol. Tests use it to read `g_temp` (T17).
+
 ## 11. SysTick, SCB and real-time speed (T12)
 
 `src/peripherals/systick.ts`, `src/peripherals/scb.ts`, `src/engine/core-cpu.ts`,

@@ -443,7 +443,7 @@ runs long, split the read path into a follow-up task.
 
 ### T17: TC74 firmware end-to-end test with the bus trace
 
-- [ ] `firmware/tc74-read/`:
+- [x] `firmware/tc74-read/`:
   - set PB6/PB7 to AF6, open-drain;
   - set TIMINGR for 100 kHz at 16 MHz;
   - read TEMP into a global `g_temp` every 250 ms.
@@ -451,9 +451,9 @@ runs long, split the read path into a follow-up task.
   `circuit.json` has the TC74 (variant A0, address 0x48), 4.7 kΩ pull-ups to 3V3,
   and wires.
 
-- [ ] End-to-end with the slider at 22: `g_temp` (read by its symbol) equals 22, and
+- [x] End-to-end with the slider at 22: `g_temp` (read by its symbol) equals 22, and
       the trace is START, 0x48 W, ACK, 0x00, ACK, … STOP.
-- [ ] `sim inspect --json` includes that trace.
+- [x] `sim inspect --json` includes that trace.
 
 **Verify:** `just fw && node --test 'firmware/tc74-read/**/*.test.ts'`. **Blocked by:** T10, T12,
 T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e2e.test.ts}`.
@@ -591,8 +591,37 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
   Each rule has its own test.
 
-**Verify:** `node --test 'src/diagnostics/**/*.test.ts'`. **Blocked by:** T14, T24. **Wave 7.**
+- [ ] A rule that throws must not stop or change the run. Catch it and report a
+      `rule-error` diagnostic instead (T24 finding).
+- [ ] `i2c-pin-push-pull`: an I2C pin is in AF mode but OTYPER is push-pull. RM0444 requires
+      open-drain. The simulator's transaction-level bus doesn't show the fight on the ACK
+      bit, so the diagnostic is the only signal (T17 finding).
+- [ ] Readable I2C trace in `sim inspect`'s text output: one line per step, with time,
+      START, ADDR 0x48 W/R, ACK/NACK, DATA 0x16, STOP. Not raw JSON (T17 finding; the brief
+      asks for this). Leave the `--json` shape alone.
+
+**Verify:** `node --test 'src/diagnostics/**/*.test.ts'`. **Blocked by:** T14, T24, T38. **Wave 7.**
 **Files:** four rule files and their tests. **Size:** M.
+
+### T38: Register and field names follow the CMSIS header
+
+Learners write `RCC->IOPENR |= RCC_IOPENR_GPIOBEN;`. The SVD names that bit `IOPBEN`, and
+GPIO's `MODE0` is `MODER0` there. Diagnostics and the register view must use the names in
+the learner's code: RM0444 and ST's `stm32g031xx.h` agree on them.
+
+- [ ] `tools/svd2json.ts` takes each field's name from `vendor/cmsis-device-g0/stm32g031xx.h`,
+      matching `<TYPE>_<REG>_<NAME>_Pos` on register and bit position (TYPE is the CMSIS
+      peripheral type: GPIO for GPIOA/B, I2C for I2C1, ...). The SVD name is kept as
+      `svdName` where it differs, and the number of renamed fields is reported. The output
+      stays deterministic.
+- [ ] Tests: RCC IOPENR bit 1 is `GPIOBEN`; GPIOA MODER bits 1:0 are `MODE0`; I2C1 CR2 SADD
+      is unchanged.
+- [ ] Code and tests that use SVD field names are updated: the clock gates (`IOPAEN` →
+      `GPIOAEN`, ...), GPIO, I2C1, SysTick and the diagnostics. `gpio-clock-off` now reads
+      `RCC->IOPENR.GPIOBEN`.
+
+**Verify:** `just test`. **Blocked by:** T4. Runs now, before T25 and the recipes (T26, T27),
+which show these names. **Size:** M.
 
 **Checkpoint 3:** see `plan.md`.
 
