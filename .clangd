@@ -1,0 +1,9 @@
+# clangd settings for the firmware. Compile flags come from compile_commands.json,
+# which `just fw` writes at the repo root.
+Diagnostics:
+  Includes:
+    # stm32g0xx.h is ST's umbrella header: it includes stm32g031xx.h, where RCC,
+    # GPIOA, ... are defined. Including it is what ST tells you to do, so clangd's
+    # "Included header stm32g0xx.h is not used directly" warning is wrong here.
+    IgnoreHeader:
+      - stm32g0xx\.h
