@@ -392,6 +392,12 @@ Its standard DOM suits the lookups `derivedFrom` needs. Rejected:
 - So these registers are hand-written from the ARMv6-M Architecture Reference Manual,
   starting with SysTick at build step 2.
 
+**Header vs SVD disagreements (T38), checked against RM0444 Rev 6.** For FLASH_OPTR
+`BORF_LEV`/`BORR_LEV`, RM0444 has BORF_LEV at bits 12:11 and BORR_LEV at 10:9. For
+SYSCFG_ITLINE3, FLASH_ITF is bit 1. Both agree with the CMSIS header, so the JSON's
+header-derived names are right and the SVD had them swapped. Those fields' SVD
+*descriptions* are still the swapped ones.
+
 ## 5. ELF loading and PC → file:line
 
 **Decision.** Use [`@gba-kit/debug-info`](https://www.npmjs.com/package/@gba-kit/debug-info)

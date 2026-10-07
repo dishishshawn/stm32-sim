@@ -614,14 +614,14 @@ Learners write `RCC->IOPENR |= RCC_IOPENR_GPIOBEN;`. The SVD names that bit `IOP
 GPIO's `MODE0` is `MODER0` there. Diagnostics and the register view must use the names in
 the learner's code: RM0444 and ST's `stm32g031xx.h` agree on them.
 
-- [ ] `tools/svd2json.ts` takes each field's name from `vendor/cmsis-device-g0/stm32g031xx.h`,
+- [x] `tools/svd2json.ts` takes each field's name from `vendor/cmsis-device-g0/stm32g031xx.h`,
       matching `<TYPE>_<REG>_<NAME>_Pos` on register and bit position (TYPE is the CMSIS
       peripheral type: GPIO for GPIOA/B, I2C for I2C1, ...). The SVD name is kept as
       `svdName` where it differs, and the number of renamed fields is reported. The output
       stays deterministic.
-- [ ] Tests: RCC IOPENR bit 1 is `GPIOBEN`; GPIOA MODER bits 1:0 are `MODE0`; I2C1 CR2 SADD
+- [x] Tests: RCC IOPENR bit 1 is `GPIOBEN`; GPIOA MODER bits 1:0 are `MODE0`; I2C1 CR2 SADD
       is unchanged.
-- [ ] Code and tests that use SVD field names are updated: the clock gates (`IOPAEN` →
+- [x] Code and tests that use SVD field names are updated: the clock gates (`IOPAEN` →
       `GPIOAEN`, ...), GPIO, I2C1, SysTick and the diagnostics. `gpio-clock-off` now reads
       `RCC->IOPENR.GPIOBEN`.
 
