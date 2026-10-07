@@ -310,6 +310,15 @@ export class Engine {
     };
   }
 
+  /** A copy of `length` bytes of SRAM from `address`, e.g. a firmware global at its ELF symbol. No side effects. */
+  readSram(address: number, length: number): Uint8Array {
+    const { chip, bus } = this.#loaded();
+    const offset = address - chip.sram.base;
+    if (offset < 0 || length < 0 || offset + length > bus.sram.length)
+      throw new RangeError(`${hex(address)} + ${length} bytes is outside SRAM`);
+    return bus.sram.slice(offset, offset + length);
+  }
+
   #loaded(): Board {
     if (!this.#board) throw new Error("no firmware loaded: call load() first");
     return this.#board;

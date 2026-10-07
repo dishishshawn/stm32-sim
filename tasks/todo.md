@@ -564,17 +564,17 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
 ### T24: Diagnostics framework, plus GPIO-clock and unsimulated-register rules
 
-- [ ] Add `src/diagnostics/rule.ts` and the registration list `index.ts`. A rule is a
+- [x] Add `src/diagnostics/rule.ts` and the registration list `index.ts`. A rule is a
       function over events plus read-only state that returns diagnostics. Rules
       never write.
-- [ ] Rules:
+- [x] Rules:
   - `gpio-clock-off`, which reports e.g. "wrote GPIOB->MODER while RCC
     IOPENR.GPIOBEN = 0";
   - `unsimulated-register`.
 
   `sim run` and `sim inspect` print diagnostics in both text and JSON.
 
-- [ ] A test proves diagnostics are pure observers: the event log is identical with
+- [x] A test proves diagnostics are pure observers: the event log is identical with
       and without them.
 
 **Verify:** `node --test 'src/diagnostics/**/*.test.ts'`. **Blocked by:** T10. **Wave 6.**

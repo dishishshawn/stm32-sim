@@ -1,0 +1,37 @@
+{
+  "chip": "stm32g031k8",
+  "parts": [
+    {
+      "id": "temp",
+      "type": "tc74",
+      "props": {
+        "temperature": 22,
+        "variant": "A0"
+      }
+    },
+    {
+      "id": "r_scl",
+      "type": "resistor",
+      "props": {
+        "ohms": 4700
+      }
+    },
+    {
+      "id": "r_sda",
+      "type": "resistor",
+      "props": {
+        "ohms": 4700
+      }
+    }
+  ],
+  "wires": [
+    ["mcu.PB6", "temp.SCLK"],
+    ["mcu.PB7", "temp.SDA"],
+    ["temp.VDD", "3V3"],
+    ["temp.GND", "GND"],
+    ["r_scl.1", "mcu.PB6"],
+    ["r_scl.2", "3V3"],
+    ["r_sda.1", "mcu.PB7"],
+    ["r_sda.2", "3V3"]
+  ]
+}
