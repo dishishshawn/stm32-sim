@@ -1023,6 +1023,29 @@ section in the right-hand sidebar, and the header `toolbar` for run controls. Th
 panels can be built in parallel without editing `main.ts`. Only placing parts and
 wires (T31, T32) change `main.ts`'s rendering.
 
+**Run controls and the Source panel (T36).** `src/ui/controls.ts`, a panel.
+
+- Pause/Resume set `run.paused`; Step calls `engine.step()` and shows the new
+  snapshot at once. Both are disabled on a halt: running or stepping a BKPT
+  stops on it again (§2, §10). `#paused` in the URL pauses before the first
+  frame, at the reset vector. No "step a line": the only PC is in
+  `snapshot()` (0.1 ms), too slow to call per instruction through blink's
+  1.2 M-instruction delay loop.
+- **Max speed** runs in the panel's `onSnapshot` callback, after `main.ts`'s
+  real-time share, until 12 ms after the frame's start
+  (`document.timeline.currentTime`, which is the rAF timestamp). A `run.max`
+  flag in `main.ts`'s loop (`t < due || loop.max`) would replace it. Blink
+  gains little (the engine runs it at about 1.5× real time at best); the test
+  uses `firmware/wfi-fixture`, which sleeps, so the speeds differ on any
+  machine.
+- **`/source?file=<path>`** is a safety boundary. It serves a file only if
+  the path is absolute and equals one of `Elf.sources()`: every file
+  `pcToSource` can give (the line table's files, joined with their unit's
+  `comp_dir`), read from the ELF on each request. Anything else is 404 (a
+  relative path, `..`, any other file). A named file missing from disk (the C
+  library's) gets an empty 200, not a 404 the browser would log on every step
+  into it.
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's

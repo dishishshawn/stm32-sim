@@ -1,12 +1,13 @@
 // The local server behind `sim ui`: the page, the firmware and circuit it runs,
 // and the engine's own .ts files with their types stripped (docs/decisions.md
 // §15). Localhost only, nothing fetched from anywhere else.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { stripTypeScriptTypes } from "node:module";
-import { dirname, join, sep } from "node:path";
+import { dirname, isAbsolute, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadElf } from "../engine/elf.ts";
 
 const SRC = fileURLToPath(new URL("../", import.meta.url));
 const INDEX = join(SRC, "ui/index.html");
@@ -75,6 +76,17 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
       } else if (path.startsWith("/src/") && path.endsWith(".json")) {
         type = "application/json";
         body = readFileSync(inside(SRC, path.slice(5)));
+      } else if (path === "/source") {
+        // ---- T36: source text for the Source panel (see sourceFile) ----
+        type = "text/plain; charset=utf-8";
+        const file = sourceFile(
+          input.elf(),
+          new URL(req.url!, "http://localhost").searchParams.get("file"),
+        );
+        // Named but not on this machine (the C library's): no text, rather
+        // than a 404 the browser would log as an error on every step into it.
+        body = existsSync(file) ? readFileSync(file) : "";
+        // ---- end T36 ----
       } else {
         res.writeHead(404, HEADERS).end();
         return;
@@ -103,6 +115,19 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
 function inside(dir: string, rest: string): string {
   const file = join(dir, rest);
   if (!file.startsWith(dir.endsWith(sep) ? dir : dir + sep))
+    throw Object.assign(new Error("not found"), { code: "ENOENT" });
+  return file;
+}
+
+// ---- T36: /source?file=<path> ----
+// A safety boundary: the page may read the source files the loaded ELF's DWARF
+// line table names, as the absolute paths pcToSource() gives them (decisions.md
+// §5), read-only, and nothing else. The path must equal one of them exactly, so
+// a relative path, a ".." or any other file is not found.
+
+/** `file`, if it is one of the ELF's source files; else a not-found error. */
+function sourceFile(elf: Uint8Array, file: string | null): string {
+  if (!file || !isAbsolute(file) || !loadElf(elf).sources().includes(file))
     throw Object.assign(new Error("not found"), { code: "ENOENT" });
   return file;
 }

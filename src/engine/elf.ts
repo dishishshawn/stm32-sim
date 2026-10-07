@@ -27,6 +27,8 @@ export interface Elf {
   functionAt(addr: number): string | undefined;
   /** File and line from DWARF. A relative file is resolved against its compile directory. */
   pcToSource(pc: number): SourceLine | undefined;
+  /** Every file pcToSource() can give, once each: the line table's files, resolved as it resolves them. */
+  sources(): string[];
 }
 
 const EM_ARM = 40;
@@ -61,22 +63,33 @@ export function loadElf(bytes: Uint8Array): Elf {
     });
   }
 
+  const pcToSource = (pc: number): SourceLine | undefined => {
+    const src = di.lines.pcToSource(pc);
+    if (!src) return undefined;
+    const unit = /^([A-Za-z]:)?[\\/]/.test(src.file)
+      ? null
+      : di.scopes.unitContaining(pc);
+    const dir = unit && attrStr(unit.root, DW_AT_comp_dir);
+    return {
+      file: dir ? normalizePath(`${dir}/${src.file}`) : src.file,
+      line: src.line,
+    };
+  };
+
   return {
     entry: v.getUint32(0x18, true),
     segments,
     symbol: (name) => di.symbolToAddress(name) ?? undefined,
     functionAt: (addr) => di.pcToFunction(addr)?.name,
-    pcToSource(pc) {
-      const src = di.lines.pcToSource(pc);
-      if (!src) return undefined;
-      const unit = /^([A-Za-z]:)?[\\/]/.test(src.file)
-        ? null
-        : di.scopes.unitContaining(pc);
-      const dir = unit && attrStr(unit.root, DW_AT_comp_dir);
-      return {
-        file: dir ? normalizePath(`${dir}/${src.file}`) : src.file,
-        line: src.line,
-      };
-    },
+    pcToSource,
+    // pcToSource(pc) is the row at or before pc, so the rows' own addresses give every answer.
+    sources: () => [
+      ...new Set(
+        di.lines.rows.flatMap((r) => {
+          const src = r.endSequence ? undefined : pcToSource(r.address);
+          return src ? [src.file] : [];
+        }),
+      ),
+    ],
   };
 }
