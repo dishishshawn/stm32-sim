@@ -2,7 +2,8 @@
 // license, so none of it is used (docs/decisions.md §3).
 //
 // Pinout: ST UM2591 Rev 1 (June 2019), §7.1, Table 9 "Arduino connectors
-// pinout" and Figure 8. Board size and the 0.6 in header spacing: Figure 6.
+// pinout" and Figure 8; all 30 positions also match Rev 2 (April 2026),
+// Table 9. Board size and the 0.6 in header spacing: Figure 6.
 // Orientation: Figure 4 (top view) has the USB connector at the top, CN3 on
 // the left and CN4 on the right, pin 1 of each next to the USB. This drawing is
 // that view turned 90° anticlockwise: USB on the left, CN4 along the top, CN3
