@@ -6,6 +6,7 @@
 import { BusFault } from "../cpu/bus.ts";
 import type { Bus } from "../cpu/bus.ts";
 import type { EventLog, Flag } from "./events.ts";
+import type { Nets } from "./nets.ts";
 import type {
   ClockGate,
   Peripheral,
@@ -55,6 +56,8 @@ export interface Chip {
   readonly flash: Region;
   readonly sram: Region;
   readonly registers: RegisterMap;
+  /** The package's I/O pins, e.g. "PA0": circuit JSON may wire "mcu.<pin>". */
+  readonly pins: readonly string[];
   /** The registration list: one entry per simulated peripheral. */
   readonly peripherals: readonly Peripheral[];
 }
@@ -63,6 +66,8 @@ export interface MemoryBusOptions {
   readonly events: EventLog;
   /** The current cycle and PC. Called only when an event is emitted. */
   readonly now: () => { cycle: number; pc: number };
+  /** The circuit, passed to each peripheral. */
+  readonly nets: Nets;
 }
 
 // The Cortex-M system control space (SysTick, NVIC, SCB). Not in the SVD.
@@ -108,7 +113,7 @@ export class MemoryBus implements Bus {
   readonly #events: EventLog;
   readonly #now: MemoryBusOptions["now"];
 
-  constructor(chip: Chip, { events, now }: MemoryBusOptions) {
+  constructor(chip: Chip, { events, now, nets }: MemoryBusOptions) {
     this.#events = events;
     this.#now = now;
     this.#flashBase = chip.flash.base >>> 0;
@@ -135,12 +140,15 @@ export class MemoryBus implements Bus {
       this.#resetValues.push([regs, reset]);
     }
     this.regs = all;
+    const regsOf = (name: string): Registers => {
+      if (!Object.hasOwn(all, name))
+        throw new Error(`peripheral ${name} is not in the register map`);
+      return all[name];
+    };
 
     for (const p of chip.peripherals) {
-      const regs = all[p.name];
-      if (!regs)
-        throw new Error(`peripheral ${p.name} is not in the register map`);
-      const instance = p.create({ regs });
+      const regs = regsOf(p.name);
+      const instance = p.create({ regs, nets, regsOf });
       const hooks = { ...instance.read, ...instance.write };
       for (const reg of Object.keys(hooks)) {
         if (!Object.hasOwn(regs, reg))

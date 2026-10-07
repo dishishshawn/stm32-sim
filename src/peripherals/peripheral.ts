@@ -2,6 +2,7 @@
 // definition's `peripherals` list. A peripheral file holds behavior only. Its
 // registers, offsets and reset values come from the chip's register JSON, and the
 // memory bus does address decoding, byte lanes, clock gating and event logging.
+import type { Nets } from "../engine/nets.ts";
 
 /**
  * Register values by SVD register name, e.g. `regs.ODR`. Registers that share an
@@ -31,6 +32,13 @@ export interface Peripheral {
 export interface PeripheralContext {
   /** This peripheral's register values, owned by the bus. */
   readonly regs: Registers;
+  /** The circuit. The chip's pins are the endpoints "mcu.<pin>", e.g. "mcu.PA0". */
+  readonly nets: Nets;
+  /**
+   * Another peripheral's registers, live and read-only, e.g. `regsOf("GPIOB").AFRL`
+   * for I2C1 to check its pins' alternate function. Throws for an unknown name.
+   */
+  regsOf(name: string): Readonly<Registers>;
 }
 
 export interface PeripheralInstance {

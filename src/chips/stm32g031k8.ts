@@ -1,6 +1,45 @@
 // The STM32G031K8 (NUCLEO-G031K8). Chip-specific facts live here, not in the engine.
 import type { Chip } from "../engine/memory-bus.ts";
+import { gpio } from "../peripherals/gpio.ts";
+import { rcc } from "../peripherals/rcc.ts";
 import registers from "./stm32g031k8.registers.json" with { type: "json" };
+
+// The I/O pins of the LQFP32 and UFQFPN32 packages (same pinout), from
+// embassy-rs/stm32-data-generated data/chips/STM32G031K8.json (MIT/Apache-2.0).
+// Package pins 22 and 23 are PA11 and PA12; SYSCFG can remap them to PA9 and PA10
+// (not simulated). PF2 doubles as NRST.
+const pins = [
+  "PA0",
+  "PA1",
+  "PA2",
+  "PA3",
+  "PA4",
+  "PA5",
+  "PA6",
+  "PA7",
+  "PA8",
+  "PA9",
+  "PA10",
+  "PA11",
+  "PA12",
+  "PA13",
+  "PA14",
+  "PA15",
+  "PB0",
+  "PB1",
+  "PB2",
+  "PB3",
+  "PB4",
+  "PB5",
+  "PB6",
+  "PB7",
+  "PB8",
+  "PB9",
+  "PC6",
+  "PC14",
+  "PC15",
+  "PF2",
+];
 
 export const stm32g031k8: Chip = {
   name: "STM32G031K8",
@@ -10,7 +49,12 @@ export const stm32g031k8: Chip = {
   flash: { base: 0x0800_0000, size: 64 * 1024 },
   sram: { base: 0x2000_0000, size: 8 * 1024 },
   registers,
+  pins,
   // The peripheral registration list: one import and one entry per peripheral.
   // Every SVD register without one is plain storage, logged as "unsimulated".
-  peripherals: [],
+  peripherals: [
+    rcc,
+    gpio("GPIOA", { register: "RCC.IOPENR", field: "IOPAEN" }, pins),
+    gpio("GPIOB", { register: "RCC.IOPENR", field: "IOPBEN" }, pins),
+  ],
 };

@@ -6,6 +6,7 @@ import type { Peripheral } from "../peripherals/peripheral.ts";
 import { EventLog } from "./events.ts";
 import type { RegEvent } from "./events.ts";
 import { MemoryBus } from "./memory-bus.ts";
+import { Nets } from "./nets.ts";
 
 const RCC_IOPENR = 0x40021034;
 const GPIOA = 0x50000000; // MODER at +0x00, reset 0xEBFFFFFF
@@ -21,6 +22,7 @@ function setup(...peripherals: Peripheral[]) {
   const bus = new MemoryBus(chip, {
     events,
     now: () => ({ cycle: 42, pc: 0x08000100 }),
+    nets: new Nets(),
   });
   return { bus, seen };
 }
@@ -205,6 +207,7 @@ test("an unsubscribed listener hears nothing more", () => {
   const bus = new MemoryBus(stm32g031k8, {
     events,
     now: () => ({ cycle: 0, pc: 0 }),
+    nets: new Nets(),
   });
   bus.readUint32(I2C1_OAR2);
   off();
