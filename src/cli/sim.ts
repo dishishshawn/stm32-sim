@@ -365,10 +365,15 @@ function ui(
           const opener = { darwin: "open", win32: "explorer" }[
             process.platform as string
           ];
-          spawn(opener ?? "xdg-open", [url], {
+          // No browser opener installed is not a failure: the URL is printed above.
+          const browser = spawn(opener ?? "xdg-open", [url], {
             detached: true,
             stdio: "ignore",
-          }).unref();
+          });
+          browser.on("error", () =>
+            console.error(`sim ui: couldn't open a browser; open ${url} yourself`),
+          );
+          browser.unref();
         }
       },
       (e: NodeJS.ErrnoException) =>

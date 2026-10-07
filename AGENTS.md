@@ -22,7 +22,7 @@ pieces wherever they fit. Write our own only where nothing suitable exists.
 
 ## Commands
 
-Node 24 and `just` come from `.mise.toml`. Run `npm install` once after cloning.
+Node 24 and `just` come from `.mise.toml`. Run `just setup` once after cloning (`npm ci`, plus Chromium for the UI tests).
 
 - `just test`: run every `*.test.ts` (`node --test`).
 - `node --test path/to/x.test.ts`: run one file.

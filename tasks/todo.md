@@ -865,13 +865,13 @@ with the TC74 (variant A0) and two common-cathode displays already placed.
 
 ### T37: README and packaging
 
-- [ ] The README has:
+- [x] The README has:
   - what the project is;
   - a quickstart: one command from a fresh clone;
   - a GIF of the thermometer;
   - "Your first part in 10 minutes", which follows `docs/adding-a-part.md`;
   - license notes for the vendored code.
-- [ ] Decide how learners start it: from a clone, through `npx`, or through a
+- [x] Decide how learners start it: from a clone, through `npx`, or through a
       published package with a `tsc` emit. Record the decision, and test it from a
       fresh clone in CI.
 
