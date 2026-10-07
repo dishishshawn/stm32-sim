@@ -18,6 +18,6 @@ export interface Bus {
   writeUint8(address: number, value: number): void;
   writeUint16(address: number, value: number): void;
   writeUint32(address: number, value: number): void;
-  /** Called by BKPT and UDF with the instruction's immediate. */
+  /** Called by BKPT with its immediate: the simulator halts as a debugger would. UDF is a HardFault (T11). */
   onBreak(code: number): void;
 }

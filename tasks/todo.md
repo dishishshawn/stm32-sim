@@ -167,14 +167,14 @@ parallel with T2, T3 and T4. **Files:** `src/engine/nets.ts`, `src/engine/circui
 
 ### T6: ELF loading and PC → file:line
 
-- [ ] Add `@gba-kit/debug-info`, pinned to an exact version. `src/engine/elf.ts` loads
+- [x] Add `@gba-kit/debug-info`, pinned to an exact version. `src/engine/elf.ts` loads
       `PT_LOAD` segments by physical address (LMA) into the flash and SRAM images,
       and looks up symbols and `pcToSource`.
-- [ ] Tested on `build/blink.elf`:
+- [x] Tested on `build/blink.elf`:
   - `Reset_Handler` and `main` resolve;
   - a PC inside `main` maps to `firmware/blink/main.c:<line>`;
   - the `.data` initial image is in flash.
-- [ ] If the package fails on GCC's DWARF 5, apply the fallback in `decisions.md` §5
+- [x] If the package fails on GCC's DWARF 5, apply the fallback in `decisions.md` §5
       and record what happened.
 
 **Verify:** `just fw && node --test src/engine/elf.test.ts`. **Blocked by:** T3, and
@@ -236,7 +236,9 @@ definition list. **Size:** M.
 ### T9: Engine run loop and blink end-to-end test
 
 - [ ] `src/engine/engine.ts`:
-  - `load(elf, circuit)`, then reset: SP and PC from the vector table. Copy each
+  - `load(elf, circuit)`, then reset: SP and PC from the vector table. Build a fresh
+    core on each load: upstream `reset()` doesn't clear lockup, IPSR or the mode
+    (T11 finding). Copy each
     segment's `data` to its `addr` (the LMA). **Don't zero-fill `memSize` there:**
     `.data` and `.bss` can share a segment, so that would write zeros into flash
     past the image. The startup code zeroes `.bss` in RAM (T6 finding);
@@ -279,14 +281,17 @@ and T14. **Files:** `src/cli/sim.ts`, `src/cli/sim.test.ts`, `docs/cli.md`,
 
 ### T11: CPU fault fidelity
 
-- [ ] An undefined opcode, or UDF, enters HardFault, with the stacked PC pointing at
+- [x] An undefined opcode, or UDF, enters HardFault, with the stacked PC pointing at
       the faulting instruction. Before this, it only logged a warning.
-- [ ] A Thumb-2-only 32-bit instruction executed on the M0+ core faults. That is what
+- [x] A Thumb-2-only 32-bit instruction executed on the M0+ core faults. That is what
       happens to firmware built with the wrong `-mcpu`.
-- [ ] A `BusFault` thrown by the bus during an instruction enters HardFault, with the stacked PC pointing at that instruction.
-- [ ] A fault inside HardFault locks up and halts the engine. Choose how BKPT behaves
+- [x] A `BusFault` thrown by the bus during an instruction enters HardFault, with the stacked PC pointing at that instruction.
+- [x] A fault inside HardFault locks up and halts the engine. Choose how BKPT behaves
       (ARMv6-M with no debugger attached escalates it to HardFault) and record the
-      choice.
+      choice. BKPT halts as if a debugger were attached; recorded in `decisions.md` §2.
+- [ ] Follow-up, not needed for the MVP: a BX/BLX to an address with bit 0 clear
+      (INVSTATE), and an SVC that can't be taken, should both enter HardFault. T11
+      left them out.
 
 **Verify:** `node --test 'src/cpu/**/*.test.ts'`. **Blocked by:** T2. **Wave 2**; runs in parallel
 with the rest of Phase 1. **Files:** `src/cpu/cortex-m0-core.ts`, its test.
@@ -325,16 +330,16 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
 
 **Contract gate:** review before T15 or T18 start.
 
-- [ ] `src/engine/i2c.ts` is a transaction-level bus on an SDA/SCL net pair:
+- [x] `src/engine/i2c.ts` is a transaction-level bus on an SDA/SCL net pair:
   - `start`, `address(addr7, rw)`, `write(byte)`, `read()` and `stop`;
   - a target ACKs if it answers to the address, otherwise the bus NACKs;
   - the bus is idle only if both nets resolve high.
 
   Record the "transaction level, not bit level" decision in `decisions.md`.
 
-- [ ] The `Part` interface gets an optional `i2c` target hook. Its address can change
+- [x] The `Part` interface gets an optional `i2c` target hook. Its address can change
       at runtime: the MCP23017 reads it from pins, and RESET can turn it off.
-- [ ] Trace events (START, ADDR+R/W, ACK/NACK, DATA, STOP, each timestamped) go out
+- [x] Trace events (START, ADDR+R/W, ACK/NACK, DATA, STOP, each timestamped) go out
       through a callback. T9/T14 connect it to the T7 event log, so T13 doesn't depend
       on T7. Tests with two fake targets check:
   - each transaction reaches the right target;
@@ -392,10 +397,10 @@ runs long, split the read path into a follow-up task.
 
 ### T16: Resistor and push-button parts
 
-- [ ] `resistor.ts` is a weak link between two pins. Between a net and `3V3` it acts
+- [x] `resistor.ts` is a weak link between two pins. Between a net and `3V3` it acts
       as a pull-up.
-- [ ] `pushbutton.ts` is a switch that joins its pins while `pressed` is set.
-- [ ] Tests:
+- [x] `pushbutton.ts` is a switch that joins its pins while `pressed` is set.
+- [x] Tests:
   - a pull-up holds an undriven net high, and an open-drain low still wins;
   - a button to GND pulls a pulled-up net low and releases it.
 
@@ -449,12 +454,12 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
 ### T19: LED and 7-segment parts
 
-- [ ] Add an optional `state?(): Readonly<Record<string, unknown>>` to `PartInstance` in `src/parts/part.ts`: what the part shows, for tests, `sim inspect` and the UI. This was the one gap the T5 contract review found.
-- [ ] An LED is lit when its anode net is high and its cathode net is low.
-- [ ] The 7-segment display has two variants, common-anode and common-cathode. It has
+- [x] Add an optional `state?(): Readonly<Record<string, unknown>>` to `PartInstance` in `src/parts/part.ts`: what the part shows, for tests, `sim inspect` and the UI. This was the one gap the T5 contract review found.
+- [x] An LED is lit when its anode net is high and its cathode net is low.
+- [x] The 7-segment display has two variants, common-anode and common-cathode. It has
       pins A–G, DP and COM, and exposes `values[8]` in `@wokwi/elements` order
       (A–G, DP).
-- [ ] Tests:
+- [x] Tests:
   - CA lights a segment when COM is high and the segment pin is low;
   - CC is the reverse;
   - a floating pin stays unlit.
