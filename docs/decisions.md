@@ -18,6 +18,7 @@ so. Revisit a decision only with new evidence, and update this file when you do.
 | Test firmware    | Built from source with `arm-none-eabi-gcc`. CI installs it. ELFs are not committed                                         |
 | Browser UI       | `sim ui` serves `src/` with types stripped (no bundler), the wokwi bundle, one import-map entry. Engine in the page (§15)  |
 | UI tests         | `playwright-core` (Apache-2.0, dev only) and Chrome Headless Shell, from `node:test`. CI caches the browser (§15)          |
+| Packaging        | Run from a git clone: `just demo` is the one command; `just setup` once before the tests. Not published to npm (§16)       |
 
 ## 1. Stack: TypeScript on Node ≥ 24
 
@@ -1222,9 +1223,48 @@ copyright). These are the "assumed" points from §8 and §9 that RM0444 settles.
 - **RCC_CR** (§5.4.1): power-on reset value `0x0000 0500`, **confirmed**. The SVD's
   `0x63` is wrong; `rcc.ts` overrides it.
 
+## 16. Packaging: run from a clone (T37)
+
+**Decision.** A learner clones the repository and runs it from there. Prerequisites:
+Node ≥ 24 (from `.mise.toml` with `mise install`, or any install), `just`, `make`
+and `arm-none-eabi-gcc`. Then:
+
+- `just demo [--port <n>]`, the one command from a fresh clone: `just fw`, `npm ci` if
+  `node_modules/` is missing, then `sim ui` on the thermometer with `--open`.
+- `just setup`, once before `just test`: `npm ci`, then
+  `npx playwright-core install --only-shell --no-remove chromium`. Chromium is only
+  for the UI tests in `just test`; `npm ci` alone is enough to run the simulator.
+  `--no-remove` because by default the install deletes every browser in
+  `~/.cache/ms-playwright` that no installation references, which can include
+  another project's.
+
+CI runs `just setup`, `just fw` and the README's
+`just sim run build/thermometer.elf --circuit firmware/thermometer/circuit.json --for 1s`
+on its fresh checkout. `just demo` serves until Ctrl-C, so CI doesn't run it; the UI
+tests start `sim ui` and drive it in Chromium.
+
+**Why.**
+
+- A learner needs the clone's files anyway: `firmware/template/`, the Makefile, the
+  linker script and the vendored startup code to build their own firmware, and
+  `src/parts/` and `templates/` to add a part. A package would put them under
+  `node_modules`.
+- No build step: Node runs the `.ts` files from the clone (§1).
+- `arm-none-eabi-gcc` has to be installed whichever way the simulator arrives.
+
+**Rejected, for now.**
+
+- **A published npm package, or `npx`.** Node refuses to strip types under
+  `node_modules` (§1; checked again on Node 24.20.0:
+  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and `npx` installs there too. It
+  would need a `tsc` emit of the CLI and engine to JavaScript, a `bin` and `files`
+  pointing at it, and `"private": false` in `package.json` (it is `true`, so nothing
+  is published by accident). A learner's own parts would still need a clone. Publishing
+  is an outward action nobody has asked for, so it isn't done.
+- **A single binary** (Node's single executable applications): one build per OS, a
+  bundle, and it still can't hold the learner's own parts or firmware.
+
 ## Open, deferred to the build step that needs them
 
-- **Packaging:** how a learner gets the one-command start (`npx`, a published package
-  with a `tsc` emit, or a single binary).
 - **Second chip:** the v7-M core choice in §2, and whether its SVD needs patches the
   way the G031's does.
