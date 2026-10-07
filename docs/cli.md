@@ -132,6 +132,18 @@ sim ui: serving http://127.0.0.1:8031/ (Ctrl-C to stop)
   7-segment digits live, push-buttons pressed while held (mouse or Space), a
   slider for a temperature sensor, the board's MCU pins coloured by level, and
   the run state and simulated time.
+- Run controls in the header: **Pause**/**Resume**; **Step**, while paused,
+  runs one instruction; **Speed** is "real time" (the default) or "max", as
+  fast as the page can run the firmware without stuttering. A BKPT or a
+  lockup stops the run and disables them: running on would stop on the same
+  BKPT again.
+- The **Source** panel shows where the PC is (`file:line` and the PC), with
+  the file's text and that line highlighted. It follows every step, and about
+  4 times a second while running. The server reads only the source files the
+  ELF's debug info names; one it names that isn't on this machine (the C
+  library's) shows no text.
+- Add `#paused` to the URL (`http://127.0.0.1:8031/#paused`) to start paused
+  at the reset vector, before the first instruction.
 - It reads the ELF and circuit files on each page load: rebuild, then reload
   the page.
 - `--port <n>`: the port, default 8031; `0` picks a free one. A port in use

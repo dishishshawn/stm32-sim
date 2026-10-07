@@ -43,6 +43,16 @@ test("blink: a PC inside main maps to firmware/blink/main.c", () => {
   assert.equal(blink.pcToSource(0), undefined);
 });
 
+test("blink: sources() names main.c and the startup file, as pcToSource gives them", () => {
+  const sources = elf("blink").sources();
+  for (const f of [
+    "firmware/blink/main.c",
+    "vendor/cmsis-device-g0/startup_stm32g031xx.s",
+  ])
+    assert.ok(sources.includes(fileURLToPath(new URL(f, root))), f);
+  assert.equal(new Set(sources).size, sources.length);
+});
+
 test("elf-fixture: the .data initial image is at its LMA in flash", () => {
   const fixture = elf("elf-fixture");
   const lma = fixture.symbol("_sidata")!;
