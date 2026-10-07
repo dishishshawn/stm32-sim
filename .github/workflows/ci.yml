@@ -5,11 +5,15 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-24.04
+    # A normal run takes about 2 minutes. Without a limit, a hung apt mirror holds
+    # a runner (and private-repo Actions minutes) for GitHub's 6-hour default.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5 # installs node and just from .mise.toml
       # libnewlib-arm-none-eabi is only a Recommends of gcc-arm-none-eabi; name it so the build never depends on apt's defaults
-      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::Retries=3 install -y gcc-arm-none-eabi libnewlib-arm-none-eabi
+        timeout-minutes: 8
       - run: npm ci
       - run: just typecheck
       - run: just fw
