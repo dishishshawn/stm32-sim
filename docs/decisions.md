@@ -1,0 +1,270 @@
+# Decisions
+
+Research done 2026-10-07, before any code, as `stm32-sim-brief.md` requires. Each
+decision says what was chosen, why, and what was rejected. Facts were read from the
+projects' own files and docs. Where something is inferred rather than read, it says
+so. Revisit a decision only with new evidence, and update this file when you do.
+
+## Summary
+
+| Area             | Decision                                                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Stack            | TypeScript on Node ≥ 24. No build step in development. `node --test` for tests. The engine runs in Node and the browser.   |
+| CPU core (M0+)   | Copy `CortexM0Core` from wokwi/rp2040js (MIT) and put it behind our own bus interface                                      |
+| CPU core (later) | Decide when a second chip is added. Candidates: c1570/rp2350js `CortexM33Core` (MIT, TS) or labwired-core (MIT, Rust/wasm) |
+| Part visuals     | `@wokwi/elements` (MIT) for every part it has; our own SVG for the breadboard, wires, Nucleo board and IC packages         |
+| Register data    | Patched SVD from stm32-rs, converted once to checked-in JSON: names, addresses, reset values, bitfields                    |
+| ELF + PC→line    | `@gba-kit/debug-info` (MIT, no dependencies, DWARF 2–5), checked against our first real ELF                                |
+| Test firmware    | Built from source with `arm-none-eabi-gcc`. CI installs it. ELFs are not committed                                         |
+
+## 1. Stack: TypeScript on Node ≥ 24
+
+**Decision.** TypeScript (ESM), with Node 24 pinned in `.mise.toml`.
+
+- The engine, CLI and tests run as `.ts` directly through Node's type stripping, with
+  no build step.
+- Tests use the built-in `node:test`, and type checks use `tsc --noEmit`.
+- The CLI parses arguments with `node:util` `parseArgs`.
+- The engine imports nothing from Node or the DOM. Only the CLI layer touches the
+  file system, file watching and exit codes. That way the same engine runs under the
+  CLI and inside the browser UI.
+
+**Why.**
+
+- Both pieces worth reusing are TypeScript or web: the rp2040js CPU core and
+  `@wokwi/elements`.
+- One language covers the engine, CLI, UI and learner extensions. A learner's AI
+  assistant can add a part without a second toolchain.
+- Verified on Node 24.20.0, the version installed here:
+  - `node file.test.ts` runs a test file;
+  - `node --test` finds `*.test.ts` with no config;
+  - `--test-name-pattern=<name>` runs a single test.
+- So there is no test framework or bundler to install for the engine.
+
+**Constraints that follow.**
+
+- Erasable TypeScript syntax only: no `enum`, `namespace` or constructor parameter
+  properties. Imports use the `.ts` extension. Set `erasableSyntaxOnly` in
+  `tsconfig.json` so `tsc` enforces this.
+- Node refuses to strip types under `node_modules`. Verified: it throws
+  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. So the npm package, if we publish
+  one, needs a `tsc` emit step. Running from a clone does not.
+- The browser UI will need a bundler or an import map to resolve Lit and
+  `@wokwi/elements`. That choice is deferred to build step 7.
+
+**Rejected.**
+
+- Bun: it would work, but students are more likely to already have Node, and Node
+  covers everything we need.
+- C# (Renode) and Rust (LabWired): see §2. Either would split the project into two
+  languages, and only the TS side runs natively in the browser.
+
+## 2. CPU core
+
+### Now (Cortex-M0+, ARMv6-M): copy rp2040js `CortexM0Core`
+
+**Decision.** Copy `src/cortex-m0-core.ts` (1,325 lines) and `src/instructions.spec.ts`
+(1,549 lines, about 126 cases) from [wokwi/rp2040js](https://github.com/wokwi/rp2040js)
+at commit `a304c74` (v1.4.0, 2026-09-25). License: MIT.
+
+- Keep the MIT notice and record where the files came from.
+- Replace the `RP2040` constructor argument with a small bus interface: 8/16/32-bit
+  read/write and a break hook.
+- Port the tests from vitest to `node:test`.
+
+**Why.**
+
+- It's MIT, TypeScript, actively released, and covers all of ARMv6-M.
+- Exception entry and return, stacking, PRIMASK, MSP/PSP/CONTROL, SVC and priority
+  arbitration all live inside the core (`cortex-m0-core.ts` :250, :290, :478, :1245).
+  The NVIC and SysTick _registers_ live outside it, in `peripherals/ppb.ts`. That
+  split matches our peripheral model.
+- Its test driver can run the same instruction tests on real hardware over GDB
+  (`test-utils/create-test-driver.ts`, `TEST_GDB_SERVER`). That would let us check the
+  core against a real NUCLEO-G031K8 through probe-rs.
+
+**Why copy instead of depending on the package.** The package doesn't export the core:
+
+- verified, the `exports` field is only `.` and `./gdb-tcp-server`;
+- `CortexM0Core` is not in `dist/esm/index.d.ts`;
+- the constructor is `constructor(readonly rp2040: RP2040)` (`:97`);
+- every memory access goes through `this.rp2040.read*/write*` (`:193-215`).
+
+There is no precedent for reusing it on a non-RP2040 chip. Cost: we own the copy and
+apply upstream fixes by hand.
+
+**Changes our copy needs, to follow the "faithful" principle.**
+
+- An unimplemented or undefined opcode only logs a warning (`:1317`). On hardware it
+  raises a HardFault. The HardFault path is a TODO upstream (`rp2040.ts:196`).
+- `cyclesIO` hard-codes the RP2040 SIO/APB address ranges (`:577-586`). Remove it;
+  cycle-exact timing is out of scope.
+- `MAX_HARDWARE_IRQ = 25` (`irq.ts:30`) is an RP2040 number. Make it a chip parameter.
+  The G031 has 32 IRQ lines and 2 NVIC priority bits.
+
+### Later (Cortex-M3/M4/M7): decide when the second chip is added
+
+The CPU sits behind the same bus interface, so a v7-M core can be swapped in per chip
+definition. Candidates as of today:
+
+- **c1570/rp2350js `CortexM33Core`.** MIT, TypeScript, about 8.5k lines with tests,
+  pushed 2026-09-10. ARMv8-M Mainline with an FPU.
+  - Plain ARMv7-M code runs on it.
+  - DSP SIMD support is partial: grep found no `SADD8` or `QADD`. M4 firmware that uses
+    those would fault.
+  - It is coupled to its chip class the same way, so it needs the same decoupling.
+- **labwired-core.** MIT, Rust, with a wasm-bindgen crate.
+  - Covers M0+, M3, M4, M7 and M33, including DSP and VFPv4-SP.
+  - The CPU steps against a bus trait: `Cpu::step(bus: &mut dyn Bus)`.
+  - The wasm crate exposes a whole simulator, not a bare core.
+  - It is a large dependency that moves fast: v0.25.0, about 635k lines of Rust, one
+    maintainer.
+
+### Rejected as the foundation
+
+| Option                                                                          | License               | Why not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Unicorn](https://github.com/unicorn-engine/unicorn) 2.1.4                      | GPL-2.0               | Bundling it makes the distributed whole GPL. It is CPU only: `armv7m_nvic_set_pending` is an empty stub and there is no SysTick. The only JS port (unicorn.js) is also GPL and about 20 MB.                                                                                                                                                                                                                                                                                                                                                                  |
+| [QEMU](https://www.qemu.org/docs/master/system/arm/stm32.html) / xPack QEMU Arm | GPL-2.0               | No G0 machine. The upstream STM32 machines have no GPIO or I2C models, and RCC is "only reset and enable registers". Each peripheral is in-tree C and needs a QEMU rebuild.                                                                                                                                                                                                                                                                                                                                                                                  |
+| [Renode](https://github.com/renode/renode) 1.17.0                               | MIT; tlib is LGPL-2.1 | License-compatible, and a single `.cs` peripheral can be loaded at runtime. But `stm32g0.repl` is generic (128 KB / 48 KB), its RCC is a Python stub, `STM32_GPIOPort` never checks RCC, and TIMINGR fields are placeholders. We would have to rewrite exactly the models whose fidelity matters most, in C#. It's a 60–100 MB .NET download and doesn't run in the browser. **Useful as a cross-check.**                                                                                                                                                    |
+| [LabWired Core](https://github.com/w1ne/labwired-core) 0.25.0                   | MIT                   | The closest existing project: ELF in, modelled chip and board, I2C/GPIO traces, CI exit codes, YAML chip manifests, a G071 config. But its peripherals are Rust inside the core crate, so adding one means editing the core and rebuilding with Rust. That fails acceptance check 4 and the "one file" recipe. Its own G071 config says the G0 peripherals "are register models reused from the L0/L4 families and are not G0-tuned". It aims at firmware CI, not at reproducing and explaining learner mistakes. **Reference, and a candidate M3/M4 core.** |
+| icicle-emu                                                                      | MIT/Apache-2.0        | Built for fuzzing. No NVIC, SysTick or Cortex-M exception model. Depends on cranelift-jit, so no wasm (inferred).                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| thumbulator (and npm `thumbulator.ts`)                                          | MIT                   | No Thumb-2; unmaintained since 2021/2022.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| zmu                                                                             | Apache-2.0            | Fixed 64 KB flash / 128 KB SRAM map. No wasm.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| armagnac                                                                        | MIT/Apache-2.0        | Its README says "ArmV6-M has not been tested", and exception priorities are not enforced.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| emul, stm32f4-emu                                                               | Apache-2.0, MIT       | Both weeks old, single-chip apps rather than libraries.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Wokwi's STM32 simulation                                                        | closed                | Not in any public wokwi repo. It needs a Wokwi license or a CLI token.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+## 3. Part visuals: `@wokwi/elements`
+
+**Decision.** Use [`@wokwi/elements`](https://github.com/wokwi/wokwi-elements) 1.9.2
+(MIT, Lit 3, repo pushed 2026-10-01) for every part it has:
+
+- LED (`value`);
+- 7-segment (`values[]`, 8 entries per digit: A–G and DP);
+- pushbutton (`pressed`, plus `button-press`/`button-release` events);
+- resistor;
+- later, the potentiometer and NTC sensor for analog work.
+
+Every element exposes `pinInfo: {name, x, y, signals}`. Pins joined inside the part
+share a prefix (`GND.1`, `GND.2`). That is enough to attach breadboard wires.
+
+**What it does not cover, and we draw ourselves as plain SVG:**
+
+- the breadboard and wires;
+- the NUCLEO-G031K8 board;
+- a DIP IC body (MCP23017, 28 pins);
+- the TC74 (TO-220-5).
+
+[wokwi-boards](https://github.com/wokwi/wokwi-boards) has a Nucleo-32 board
+(`st-nucleo-l031k6`) with pin coordinates, but the repo has **no license file**. Treat
+it as all rights reserved and don't copy it.
+
+**Consequences.**
+
+- The elements only display state. Their README says they "only provide the
+  presentation… not the functional simulation". All behavior lives in our parts.
+- The 7-segment element has no anode/cathode property. Our part computes which
+  segments are lit from the net levels and the variant, then hands the element its
+  `values`. That is also the code the "common-anode driven with common-cathode
+  patterns" fault test exercises.
+- Pin signal types already include `analog`, which fits the analog extension later.
+
+## 4. Register data: SVD, converted to checked-in JSON
+
+**Decision.** Take every register name, address, reset value and named bitfield from
+the [stm32-rs](https://github.com/stm32-rs/stm32-rs) patched SVD for the STM32G031.
+
+- It is ST's v1.6 SVD with stm32-rs's corrections.
+- ST's original carries `SPDX-License-Identifier: Apache-2.0`; the stm32-rs patches
+  are MIT/Apache-2.0.
+- Vendor it with ST's Apache-2.0 license text. The patched file drops ST's license
+  comment, so the attribution has to be restored next to it.
+- A one-off script converts it to JSON per chip, and the JSON is checked in. Nothing
+  parses XML at runtime.
+
+Peripheral files contain only behavior and side effects. If RM0444 and the SVD
+disagree, RM0444 wins, and the peripheral file overrides the value with a comment
+citing the RM section.
+
+**Why.**
+
+- A second STM32 then gets its register map, register view and named bits from data
+  instead of hand-typing.
+- It also makes "log access to an unimplemented register" precise. The log can name
+  the register ("read of `I2C1->OAR2`, not simulated"). And it can tell that case
+  apart from an address where no register exists at all.
+
+**Known errors in ST's G031 SVD v1.6, all fixed by stm32-rs:**
+
+- `nvicPrioBits` is 4; the CMSIS header says 2.
+- A phantom DMA2, and DMA1 declared with 7 channels instead of 5.
+- FLASH `WRP1AR`/`WRP1BR` have the wrong access type and reset value.
+- A leftover `SYSCFG_ITLINE` peripheral.
+- Misspelt names (`MISERR`, `IDWG_SW`).
+- Fields split into pieces (`BRR_0_3`/`BRR_4_15`).
+- `TIM3 derivedFrom="TIM2"`, which inherits a 32-bit layout.
+
+This is why we use the patched file, not the raw one. The stm32-rs field
+documentation for this chip is 2964 of 3456 fields.
+
+**Also vendored, for the example firmware:**
+
+- ST [cmsis-device-g0](https://github.com/STMicroelectronics/cmsis-device-g0) v1.4.5
+  (`stm32g031xx.h`, Apache-2.0);
+- the Arm CMSIS-Core headers it includes (`core_cm0plus.h`, Apache-2.0);
+- each with its license file next to it.
+
+The device header has bit masks but **no reset values**, so it can't replace the SVD.
+
+**Not yet checked.** The core peripherals (SysTick, NVIC, SCB) are defined by the
+ARMv6-M architecture manual. Whether the G031 SVD includes them gets checked at build
+step 2. If it doesn't, they are hand-written from the ARM manual.
+
+## 5. ELF loading and PC → file:line
+
+**Decision.** Use [`@gba-kit/debug-info`](https://www.npmjs.com/package/@gba-kit/debug-info)
+0.8.0 (MIT, no dependencies, pinned exact) for symbols and the `.debug_line` lookup:
+ELF32, DWARF 2–5, `pcToSource` and `symbolToAddress`.
+
+It was built for the Game Boy Advance, whose toolchain also produces ARM ELF32, so
+it should fit (inferred). It's pre-1.0 with little use. **Build step 1 must check it
+against a real `arm-none-eabi-gcc` ELF.** If it fails, vendor it (MIT allows that)
+and fix it, or write a `.debug_line` reader. Loading `PT_LOAD` segments into flash and
+RAM is a few dozen lines; write it ourselves if the package doesn't expose segments.
+
+**Why DWARF 5 matters.** GCC 11 and later emit DWARF 5 by default. The npm `addr2line`
+package has no DWARF-5 header parsing (inferred from `lib/dwarf.js`). The popular ELF
+packages (`elfy`, `elf-tools`, `elfinfo`) don't parse DWARF at all.
+
+**Rejected: calling binutils** (`arm-none-eabi-addr2line`, or
+`objdump --dwarf=decodedline`).
+
+- It works only from Node, never in the browser.
+- The objdump text depends on locale and width, and truncates file names to 35
+  characters without `-w`.
+- Its format has never been documented as stable.
+
+## 6. Firmware toolchain for tests
+
+**Decision.**
+
+- Example and test firmware is built from source with `arm-none-eabi-gcc`, the same
+  toolchain learners use.
+- CI installs it (`gcc-arm-none-eabi` from apt on Ubuntu).
+- Built ELFs are not committed.
+- CPU instruction tests use hand-assembled opcodes, as the rp2040js tests do, so they
+  run without the toolchain. Only the firmware-level tests need it.
+
+**Not installed on the development laptop yet.** `~/install-remaining.sh` installs it
+through apt, which needs sudo.
+
+## Open, deferred to the build step that needs them
+
+- **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
+  whether the engine runs in the page, in a Web Worker, or in Node behind a socket.
+  It's possible either way because the engine has no Node or DOM imports.
+- **Packaging:** how a learner gets the one-command start (`npx`, a published package
+  with a `tsc` emit, or a single binary).
+- **Second chip:** the v7-M core choice in §2, and whether its SVD needs patches the
+  way the G031's does.
