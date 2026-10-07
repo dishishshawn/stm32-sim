@@ -169,6 +169,10 @@ facts, and delete the comment.
 
 ## 4. Pins
 
+- Pick the package a learner would put on a breadboard: a DIP or TO-220 if
+  there is one, otherwise the leaded package (e.g. MSOP over DFN). Say which in
+  a comment. Leave out an exposed pad (EP): it's a thermal or ground pad, not
+  something to wire.
 - Use the datasheet's names, in the order of its pin table. The TC74 is
   `["NC", "SDA", "GND", "SCLK", "VDD"]`, the TO-220 pins 1 to 5. Its clock pin
   is `SCLK`, not `SCL`: keep the datasheet's spelling.
@@ -416,7 +420,11 @@ const address = () =>
         },
 ```
 
-with `let byteIndex = 0;` and `let latched = 0;` next to `pointerNext`. Writes are the same idea:
+with `let byteIndex = 0;` and `let latched = 0;` next to `pointerNext`. The
+snippet assumes every register is 16 bits. If widths differ (the MCP9808's
+register 0x08 is 8 bits), keep a width per register, e.g.
+`const WIDTH: Record<number, 1 | 2> = { 0x08: 1 };` with 2 as the default, and
+count bytes against it. Writes are the same idea:
 count the bytes. When a byte takes effect is the datasheet's call: some parts
 apply each byte as it arrives (the TMP102 does, so a STOP after the MSB changes
 only the MSB), others only once the whole word is in. Move the pointer only if
@@ -498,7 +506,15 @@ the real chip fails.
   guesses.
 - Anything the part has that you don't simulate (an alert output, a mode),
   name in the file's header comment. If firmware can switch it on, list it in
-  `state()` when it does, as the MCP23017's `notSimulated`.
+  `state()` when it does, as the MCP23017 does:
+
+  ```ts
+  const notSimulated = new Set<string>();
+  // in the register write that enables it:
+  if (value & ALERT_ENABLE) notSimulated.add("Alert output (stays hi-z)");
+  // in state():
+  return { temperature, notSimulated: [...notSimulated] };
+  ```
 
 ## 10. Register the part
 
@@ -555,7 +571,9 @@ tests to your datasheet. Test at least:
 - each register: read, write, read-only bits unchanged;
 - the pointer: where it is after each transfer;
 - the slider-to-register conversion, row by row from the datasheet's own
-  example table (`tc74.test.ts` checks Table 4-4);
+  example table (`tc74.test.ts` checks Table 4-4). If the datasheet has no
+  table, take its worked examples and derive further rows from its formula,
+  and say so in a comment;
 - timing: just before and just after the conversion time;
 - `state()`.
 
@@ -612,8 +630,10 @@ just sim inspect build/tc74-read.elf --circuit build/try.json --at 1s
 
 Near the end of the output, `i2c` is the bus trace, and last, `parts` is
 each part's `state()`. If your
-part answers 0x48, the trace shows its byte from register 0x00; if not, it
-shows `"ack":"nack"` on every address, which checks `address()` too. A bad
+part answers 0x48, the trace shows its byte from register 0x00. If not (an
+MCP9808 lives at 0x18–0x1F), every address phase shows `NACK` (`"ack":"nack"`
+with `--json`), which checks `address()` too. Check the part's `state()` under
+`parts`, or copy `firmware/tc74-read/` and change its address. A bad
 part type, prop or pin name exits 2 and names what is valid. Add `--json` for
 the same as JSON, and `--set <id>.<prop>=<value>` to change a prop.
 

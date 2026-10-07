@@ -659,11 +659,15 @@ parallel with T23 and T27. **Size:** M.
 
 ### T28: Acceptance 4: a TMP102 added from the recipe alone
 
-- [ ] A **fresh agent** gets only `docs/adding-a-part.md` and the task "add a TMP102".
+- [x] A **fresh agent** gets only `docs/adding-a-part.md` and the task "add a TMP102".
       Its diff touches only the new part file, its test and `src/parts/index.ts`.
-- [ ] Wherever the agent got stuck, fix the recipe, not the agent's code. Then rerun
+- [x] Wherever the agent got stuck, fix the recipe, not the agent's code. Then rerun
       with another fresh agent until the run is clean. Record the iterations in
       `docs/agent-handoffs/T28.md`.
+
+- Result: iteration 1 (TMP102) and iteration 2 (MCP9808) both touched only the
+  three allowed files. Iteration 1's 8 recipe gaps were fixed; iteration 2 had 6
+  minor gaps, also fixed, with no third run. See `docs/agent-handoffs/T28.md`.
 
 **Verify:** `git diff --stat` on the agent's branch, and `just test`. **Blocked by:**
 T26. **Wave 9.** **Size:** S.
