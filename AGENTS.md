@@ -39,26 +39,32 @@ syntax that can be erased, so:
 - relative imports use the `.ts` extension;
 - type-only imports use `import type`.
 
-## Current state: scaffold only (T1 done)
+## Extension points
+
+Each one is a file plus one entry in a registration list. Every new part or
+peripheral ships with a headless test next to it (`x.ts` → `x.test.ts`), which
+`just test` runs.
+
+- **Part:** `src/parts/<name>.ts`, registered in `src/parts/index.ts`. The interface
+  is `src/parts/part.ts`; an I2C target is `I2cTarget` in `src/engine/i2c.ts`.
+  Recipe: `docs/adding-a-part.md`, with the TC74 as the worked example. Templates:
+  `templates/part.ts` and `templates/part.test.ts`.
+- **Peripheral:** `src/peripherals/<name>.ts`, registered in the chip definition's
+  `peripherals` list (`src/chips/stm32g031k8.ts`). The interface is
+  `src/peripherals/peripheral.ts`. The file holds behavior only; registers and reset
+  values come from `src/chips/stm32g031k8.registers.json`. Recipe
+  (`docs/adding-a-peripheral.md`) and templates: coming with T27.
+- **Diagnostic rule:** `src/diagnostics/<name>.ts`, registered in
+  `src/diagnostics/index.ts`. The interface is `src/diagnostics/rule.ts`. Recipe and
+  templates: coming with T27.
+
+The templates are not registered. Their tests mount them directly and run in
+`just test`, so they can't go stale.
 
 `docs/decisions.md` records the stack and every reuse choice, with licenses and
-sources. Read it before step 1 and follow it; don't reopen a decision without new
-evidence. In short:
-
-- TypeScript on Node ≥ 24 with no build step, and `node --test` for tests. The engine
-  has no Node or DOM imports.
-- The CPU is rp2040js's `CortexM0Core`, copied in behind our own bus interface.
-- Part visuals come from `@wokwi/elements`.
-- Register maps come from the stm32-rs patched SVD, converted to JSON.
-- ELF symbols and line info come from `@gba-kit/debug-info`.
-
-The build plan is `tasks/plan.md`: the index, dependency graph and parallel waves.
-Each task's card, with acceptance criteria and verification, is in `tasks/todo.md`.
-
-Build order (each step ends in a passing headless test): CPU/memory/ELF +
-`sim run`/`sim inspect` with a GPIO toggle → SysTick → I2C1 + TC74 + bus trace →
-MCP23017 + 7-segment → button + pull-ups → extension recipes/templates + acceptance
-check 4 → breadboard UI + `sim watch` → register view, diagnostics, stepping.
+sources. Read it before changing anything it covers; don't reopen a decision without
+new evidence. The build plan is `tasks/plan.md`, and each task's card is in
+`tasks/todo.md`.
 
 ## Behavioral rules the simulator must keep
 
