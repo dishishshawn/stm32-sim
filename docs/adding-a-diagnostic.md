@@ -213,7 +213,7 @@ The template's:
 - First the event: its kind, op, peripheral, register and flags. Then the
   state, from `board`. Report only when both match.
 - **Only read.** Never assign to `board.regs`, and never reach the simulation
-  any other way: a rule is a pure observer (AGENTS.md). The types stop most of
+  any other way: a rule is a pure observer (docs/decisions.md §13). The types stop most of
   it (`regs` is `Readonly`, and a part's view has only `address()`, which
   parts keep free of side effects). The purity test (step 7) catches the rest.
 - **Keep no state between calls.** `rules` in `index.ts` is one list, shared

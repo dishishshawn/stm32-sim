@@ -1,5 +1,5 @@
 // The diagnostic rule interface. A rule explains a likely mistake and never
-// alters behavior (AGENTS.md): it gets each event and read-only views of the
+// alters behavior (docs/decisions.md §13): it gets each event and read-only views of the
 // board, and returns what it found. diagnose() runs the rules over an event log
 // and counts repeats, so a mistake inside a loop is reported once. A rule that
 // throws is reported as a "rule-error" diagnostic, and the run goes on.

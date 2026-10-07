@@ -307,7 +307,7 @@ export const i2c1: Peripheral = {
         TIMEOUTR: store("TIMEOUTR"),
         // §32.9.5: "must be configured when the I2C peripheral is disabled
         // (PE = 0)", without saying what a write with PE = 1 does. Assumed, per
-        // AGENTS.md's rule: it is ignored, silently.
+        // As on silicon, never "fixed" for the firmware: it is ignored, silently.
         TIMINGR(value) {
           if (!(regs.CR1 & PE)) regs.TIMINGR = value;
         },

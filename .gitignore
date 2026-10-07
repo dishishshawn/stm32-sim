@@ -1,8 +1,14 @@
 node_modules
 build/
-.claude/scheduled_tasks.lock
-.claude/settings.local.json
-.claude/worktrees/
 docs/reference/
 compile_commands.json
 .cache
+
+# Private to Shawn's agent workflow: kept locally, not in the repo.
+.claude/
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+tasks/
+docs/agent-handoffs/
+stm32-sim-brief.md

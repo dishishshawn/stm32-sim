@@ -1,6 +1,6 @@
 # Decisions
 
-Research done 2026-10-07, before any code, as `stm32-sim-brief.md` requires. Each
+Research done 2026-10-07, before any code, as the project brief requires. Each
 decision says what was chosen, why, and what was rejected. Facts were read from the
 projects' own files and docs. Where something is inferred rather than read, it says
 so. Revisit a decision only with new evidence, and update this file when you do.
@@ -742,11 +742,11 @@ I2C1EN = 1, so flags appear over simulated time:
 - **Assumed:**
   - **BUSY** is "a START was seen" in RM0444 (§32.9.7). Here it is also set while
     either line isn't high (floating, held low, pins not routed), and a pending
-    START waits for both lines high. That is AGENTS.md's "a bus held low reads as
+    START waits for both lines high. That is the simulator's "a bus held low reads as
     BUSY, and START never happens": RM0444 only warns that a low incident at START
     may deadlock the peripheral (§32.4.9).
   - **TIMINGR** with PE = 1: RM0444 says it "must be configured" with PE = 0
-    (§32.9.5) but not what such a write does. Ignored silently, per AGENTS.md.
+    (§32.9.5) but not what such a write does. Ignored silently: the simulator reproduces the firmware's mistakes rather than fixing them.
   - While PE = 0, CR2's START/STOP/NACK/PECBYTE can't be set, and TXDR writes are
     ignored (TXE is held set).
   - Clearing PE mid-transfer puts no STOP on the bus; the target sees the next START.
@@ -815,7 +815,7 @@ chip's `clockHz`" and §12's "I2CCLK is the 16 MHz core clock".
   MHz, VCO 96–344 MHz, PLLRCLK ≤ 64 MHz) aren't enforced: that's T42's
   diagnostic. While PLLON = 1, writes to PLLSRC, M, N, P, Q and R are ignored,
   and so is PLLREN while PLLRCLK is SYSCLK (§5.4.4: "can be written only when the
-  PLL is disabled"), silently, per AGENTS.md.
+  PLL is disabled"), silently, as the simulator reproduces mistakes rather than fixing them.
 - **SW → SWS** (§5.2.7): "A switch from one clock source to another occurs only
   if the target clock source is ready", and "if a clock source which is not yet
   ready is selected, the switch occurs when the clock source becomes ready". So

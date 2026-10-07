@@ -280,12 +280,8 @@ npm dependencies:
 
 ## More
 
-- [AGENTS.md](AGENTS.md): how to build, run and test; the extension points; the
-  rules the simulator keeps. AI coding assistants read it too (`CLAUDE.md` links
-  to it).
 - [docs/](docs/): the [command line](docs/cli.md), the
   [design decisions](docs/decisions.md) with their sources and licenses, and the
   recipes for adding a [part](docs/adding-a-part.md),
   [peripheral](docs/adding-a-peripheral.md) or
   [diagnostic](docs/adding-a-diagnostic.md).
-- [stm32-sim-brief.md](stm32-sim-brief.md): the original spec.
