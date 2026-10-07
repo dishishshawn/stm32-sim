@@ -136,11 +136,13 @@ One register, as the JSON has it:
 - **Your file holds behavior only.** It never declares a register, an offset,
   a reset value or a bit position for the bus. The bus, `sim inspect`'s
   register view and the diagnostics all read those from the JSON.
-- **Names.** Register names are the SVD's, which are mostly the CMSIS
-  header's: `I2C1->TXDR` is `TXDR`. Field names are the CMSIS header's, as in
-  the learner's code: `RCC_IOPENR_GPIOBEN` is field `GPIOBEN` of `IOPENR`.
-  Where the header names a register differently (decisions.md §4 lists them),
-  the JSON keeps the SVD's name: GPIO's `AFR[0]` is `AFRL`.
+- **Names.** Register names are the SVD's. Exam-style firmware `#define`s them
+  as `<PERIPH>_<REG>`, so `I2C1_TXDR` is register `TXDR` of `I2C1`, and
+  diagnostics print it as `I2C1_TXDR (0x40005428)`. Field names are the CMSIS
+  header's (RM0444 uses them too): the `GPIOBEN` bit of `RCC_IOPENR` is field
+  `GPIOBEN` of `IOPENR`. Where the header names a register differently
+  (decisions.md §4 lists them), the JSON keeps the SVD's name: GPIO's `AFR[0]`
+  is `AFRL`, so firmware writes `GPIOB_AFRL`.
 - Your hooks are keyed by those register names. A hook for a name that isn't
   in the JSON stops the chip from loading: `I2C1 has no register TXDATA`.
 - Registers that share an offset (TIMx `CCMR1_Input` and `CCMR1_Output`) are
@@ -230,7 +232,7 @@ registers are not effective" (RM0444 §5.2.17). I2C1's:
 - **`tick()` is gated too.** With the enable bit at 0 the bus doesn't call
   `tick()`: a peripheral without its clock is frozen (RM0444 §5.2.17). Check
   only your own enable bits at the top of `tick()`, e.g. `if (!(regs.CR1 & CEN))
-  return;`. I2C1 also checks its RCC bit itself, which is harmless.
+return;`. I2C1 also checks its RCC bit itself, which is harmless.
 
 - A peripheral with no enable bit (RCC itself, the core's SysTick) leaves
   `gate` out.

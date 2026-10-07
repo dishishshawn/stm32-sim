@@ -126,7 +126,7 @@ test("with DIER.UIE, each update event pends the TIM14 interrupt (16 + 19)", () 
   assert.deepEqual(pended, [35, 35]);
 });
 
-test("with RCC->APBENR2.TIM14EN = 0, writes are ignored and the counter stops", () => {
+test("with RCC_APBENR2.TIM14EN = 0, writes are ignored and the counter stops", () => {
   const off = setup(false);
   off.w(ARR, 9);
   off.w(CR1, CEN);
