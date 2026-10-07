@@ -13,6 +13,7 @@ once the package's `bin` is on your PATH.
 sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
 sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
 sim ui <elf> [--circuit <json>] [--port <n>] [--open] [--json]
+sim watch <elf> [--circuit <json>] [--for <duration>] [inputs] [--json]
 ```
 
 `run` and `inspect` load the ELF onto the circuit's chip, reset it, and run it for the given
@@ -132,13 +133,46 @@ sim ui: serving http://127.0.0.1:8031/ (Ctrl-C to stop)
   7-segment digits live, push-buttons pressed while held (mouse or Space), a
   slider for a temperature sensor, the board's MCU pins coloured by level, and
   the run state and simulated time.
-- It reads the ELF and circuit files on each page load: rebuild, then reload
-  the page.
+- It reads the ELF and circuit files on each page load. It also watches the
+  ELF as `watch` does: when you rebuild, the open page loads the new firmware
+  within a second, keeping its circuit and resetting the MCU (parts start
+  again from the circuit's props; a slider shows its old value until moved),
+  and the header
+  says `firmware reloaded at HH:MM:SS` for a few seconds. If the new ELF
+  doesn't load, it says `firmware reload failed: …` and the old firmware keeps
+  running. A page whose firmware has halted (BKPT, lockup) reloads whole.
 - `--port <n>`: the port, default 8031; `0` picks a free one. A port in use
   exits 2.
 - `--open`: also open the URL in the default browser.
 - It is local and offline: it listens on 127.0.0.1 only, and the page loads
   nothing from anywhere else.
+
+**`watch`** runs as `run` does (`--for` defaults to `1s`), prints the result,
+then runs again each time the ELF changes, until Ctrl-C:
+
+```
+$ just sim watch build/blink.elf --for 500ms
+--- run 1: build/blink.elf at 14:02:11 ---
+status  completed
+…
+sim watch: waiting for build/blink.elf to change (Ctrl-C to stop)
+
+--- run 2: build/blink.elf at 14:02:40 ---
+status  completed
+…
+```
+
+- A change counts once the file has kept its size and modification time for
+  100 ms, since a linker may write it in steps. It polls the path every 50 ms,
+  so a linker that replaces the file is followed too. A deleted ELF is ignored
+  until it is back.
+- Each run reads the ELF and the circuit again.
+- Bad input on the first run (arguments, ELF, circuit) exits 2, as `run` does.
+  After that an error, e.g. a truncated ELF, is printed (on stderr, or as a
+  JSON error line) and it keeps watching.
+- Ctrl-C exits 0. A run's status is in its output, not the exit code.
+- With `--json`, each run prints one JSON object on one line: `run`'s object
+  with `"command": "watch"`.
 
 ## Exit codes
 
@@ -148,6 +182,7 @@ sim ui: serving http://127.0.0.1:8031/ (Ctrl-C to stop)
 | 1    | firmware fault: the CPU is in its HardFault handler, or locked up                        |
 | 2    | usage or invalid input: bad arguments, a missing or unreadable ELF, invalid circuit JSON |
 | 2    | `ui`: the port is in use                                                                 |
+| 0    | `watch`: stopped with Ctrl-C                                                             |
 | 3    | internal error: a bug in the simulator                                                   |
 
 **BKPT** stops the run at the BKPT instruction, as a debugger would, with
@@ -187,7 +222,7 @@ are hex strings (`"0x08000154"`); bit-field values are numbers.
 
 | Field         | Meaning                                                                                                                                  |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `command`     | `"run"` or `"inspect"`                                                                                                                   |
+| `command`     | `"run"`, `"inspect"` or `"watch"`                                                                                                        |
 | `elf`         | the ELF path                                                                                                                             |
 | `circuit`     | the circuit path, or `null`                                                                                                              |
 | `status`      | `"completed"`, `"breakpoint"`, `"hardfault"` or `"lockup"`                                                                               |

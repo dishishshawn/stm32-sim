@@ -3,7 +3,7 @@
 // contract: commands, flags, JSON shapes and exit codes. Changing any of them
 // is a breaking change.
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync, unwatchFile, watchFile } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
@@ -25,6 +25,7 @@ const USAGE = `usage:
   sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
   sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
   sim ui <elf> [--circuit <json>] [--port <n>] [--open] [--json]
+  sim watch <elf> [--circuit <json>] [--for <duration>] [inputs] [--json]
 inputs, repeatable:
   --set <part>.<prop>=<value>            before the run
   --at <duration>:<part>.<prop>=<value>  at that simulated time
@@ -41,6 +42,8 @@ class InputError extends Error {
 }
 
 const json = process.argv.includes("--json");
+/** `sim watch --json` prints one object per line: one per run. */
+const compact = process.argv[2] === "watch";
 try {
   process.exitCode = main(process.argv.slice(2));
 } catch (e) {
@@ -58,9 +61,11 @@ function fail(e: unknown) {
   process.exitCode = input ? 2 : 3;
 }
 
-function main(argv: string[]): number {
+function main(argv: string[], once = false): number {
   const [command, ...rest] = argv;
-  const time = { run: "for", inspect: "at", ui: "" }[command ?? ""];
+  const time = { run: "for", inspect: "at", ui: "", watch: "for" }[
+    command ?? ""
+  ];
   if (time === undefined)
     throw new InputError(
       command ? `unknown command "${command}"` : "missing command",
@@ -72,7 +77,12 @@ function main(argv: string[]): number {
     ...(command === "ui"
       ? { port: { type: "string", default: "8031" }, open: { type: "boolean" } }
       : {
-          ...(time === "for" && { for: { type: "string" } }),
+          ...(time === "for" && {
+            for: {
+              type: "string",
+              ...(command === "watch" && { default: "1s" }),
+            },
+          }),
           // Prop changes, and inspect's own --at <duration>: only a change has a ":".
           at: { type: "string", multiple: true },
           set: { type: "string", multiple: true },
@@ -94,6 +104,7 @@ function main(argv: string[]): number {
       true,
     );
   }
+  if (command === "watch" && !once) return watch(argv, positionals[0]);
   if (command === "ui") {
     return ui(
       positionals[0],
@@ -149,7 +160,10 @@ function main(argv: string[]): number {
   const i2c: I2cTraceEvent[] = [];
   // Features a peripheral doesn't simulate (I2C1's RELOAD, a template's TIM16 ...),
   // by peripheral and feature, with a count.
-  const notSimulated = new Map<string, { periph: string; feature: string; count: number }>();
+  const notSimulated = new Map<
+    string,
+    { periph: string; feature: string; count: number }
+  >();
   if (inspect) {
     engine.events.subscribe((e) => {
       if (e.kind === "net") return;
@@ -158,7 +172,12 @@ function main(argv: string[]): number {
         const key = `${e.periph}.${e.feature}`;
         const n = notSimulated.get(key);
         if (n) n.count++;
-        else notSimulated.set(key, { periph: e.periph, feature: e.feature, count: 1 });
+        else
+          notSimulated.set(key, {
+            periph: e.periph,
+            feature: e.feature,
+            count: 1,
+          });
         return;
       }
       if (e.kind !== "reg") return;
@@ -330,6 +349,7 @@ function ui(
           circuitPath
             ? readFileSync(circuitPath, "utf8")
             : serializeCircuit(circuit),
+        onElfChange: (fn) => watchStable(elfPath, fn), // T33
       }),
     )
     .then(
@@ -357,6 +377,65 @@ function ui(
     );
   return 0;
 }
+
+// ---- T33: sim watch ----
+
+/**
+ * `sim watch`: runs as `run` does, then again each time the ELF is rebuilt,
+ * until Ctrl-C (exit 0). Bad input on the first run exits 2, as `run` does.
+ * After that, an error (a broken ELF) is printed and it keeps watching.
+ */
+function watch(argv: string[], elfPath: string): number {
+  let n = 0;
+  const once = () => {
+    const time = new Date().toTimeString().slice(0, 8);
+    if (!json)
+      console.log(
+        `${n ? "\n" : ""}--- run ${++n}: ${rel(elfPath)} at ${time} ---`,
+      );
+    main(argv, true);
+  };
+  process.once("SIGINT", () => process.exit(0));
+  // Watching first, so a rebuild during the first run counts too.
+  watchStable(elfPath, () => {
+    try {
+      once();
+    } catch (e) {
+      fail(e);
+    }
+  });
+  try {
+    once();
+  } catch (e) {
+    unwatchFile(elfPath); // so it exits, with run's exit code
+    throw e;
+  }
+  if (!json)
+    console.log(
+      `sim watch: waiting for ${rel(elfPath)} to change (Ctrl-C to stop)`,
+    );
+  return 0;
+}
+
+/**
+ * Calls `changed` each time the file at `path` changes, once its size and
+ * mtime have stayed the same for 100 ms: a linker may write it in steps.
+ * Polls the path, so it also follows a file that is replaced (ld unlinks its
+ * output first). A deleted file is ignored until it is back.
+ */
+function watchStable(path: string, changed: () => void): void {
+  let timer: NodeJS.Timeout | undefined;
+  watchFile(path, { interval: 50 }, (seen) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      // Changed again since: watchFile calls back again, and that waits anew.
+      const now = statSync(path, { throwIfNoEntry: false });
+      if (now?.mtimeMs === seen.mtimeMs && now.size === seen.size) changed();
+    }, 100);
+  });
+}
+
+// ---- end T33 ----
 
 /** The ELF's bytes and the parsed circuit, else the chip alone. Anything thrown reading them is the input's fault: exit 2. */
 function readInput(elfPath: string, circuitPath: string | undefined) {
@@ -483,5 +562,5 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 function print(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
+  console.log(JSON.stringify(value, null, compact ? undefined : 2));
 }

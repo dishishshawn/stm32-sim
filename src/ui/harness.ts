@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -34,13 +34,14 @@ before(async () => {
 after(() => browser?.close());
 
 /**
- * `sim ui` on build/<elf>.elf and `circuit`, open in a new page. `problems`
- * collects page errors, console errors and any request to another origin.
+ * `sim ui` on build/<elf>.elf (or `elf` itself, a path ending in .elf) and
+ * `circuit`, open in a new page. `problems` collects page errors, console
+ * errors and any request to another origin.
  */
 export async function open(t: TestContext, elf: string, circuit: string) {
-  const path = `build/${elf}.elf`;
+  const path = elf.endsWith(".elf") ? elf : `build/${elf}.elf`;
   assert.ok(
-    existsSync(join(root, path)),
+    existsSync(resolve(root, path)),
     `${path} is missing: run \`just fw\` first`,
   );
   const sim = spawn(
