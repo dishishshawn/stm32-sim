@@ -754,6 +754,23 @@ I2C1EN = 1, so flags appear over simulated time:
   the transfer runs as if they were 0. BERR and ARLO are never set: the bus model has
   no misplaced START/STOP and no arbitration (§7).
 
+## 13. Diagnostics (T24, T25)
+
+- A `Rule` gets each event plus a read-only `BoardView`: register values, net levels,
+  `sameNet`, and a projection of each part (id, type, pins, props, and for an I2C
+  target its `sda`/`scl`/`address()`). It never gets the bus or `setProp`, so it can't
+  change the run. The purity test runs four firmware scenarios with and without every
+  rule and compares the event logs and snapshots.
+- So a part's `address()` **must have no side effects**: diagnostics call it.
+- A rule that throws becomes a `rule-error` diagnostic; the run continues unchanged.
+- Repeats are grouped by rule and message, with a count.
+- I2C pin rules fire when firmware sets START, not when it sets PE, because firmware
+  may legally route the pins after enabling PE. The cost: firmware that polls BUSY
+  before ever setting START gets no pin diagnostic.
+- `Chip` carries its AF table (`af`), which GPIO already used, so rules can name
+  I2C1's candidate pins.
+- Field names in messages are the CMSIS names (§4), as in the learner's code.
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's

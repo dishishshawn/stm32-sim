@@ -587,7 +587,7 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
 ### T25: I2C diagnostic rules
 
-- [ ] Rules:
+- [x] Rules:
   - `timingr-while-pe`;
   - `i2c-pins-not-af6`;
   - `i2c-bus-not-idle`, which names the likely cause: no pull-ups, or a line held low;
@@ -596,12 +596,12 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
   Each rule has its own test.
 
-- [ ] A rule that throws must not stop or change the run. Catch it and report a
+- [x] A rule that throws must not stop or change the run. Catch it and report a
       `rule-error` diagnostic instead (T24 finding).
-- [ ] `i2c-pin-push-pull`: an I2C pin is in AF mode but OTYPER is push-pull. RM0444 requires
+- [x] `i2c-pin-push-pull`: an I2C pin is in AF mode but OTYPER is push-pull. RM0444 requires
       open-drain. The simulator's transaction-level bus doesn't show the fight on the ACK
       bit, so the diagnostic is the only signal (T17 finding).
-- [ ] Readable I2C trace in `sim inspect`'s text output: one line per step, with time,
+- [x] Readable I2C trace in `sim inspect`'s text output: one line per step, with time,
       START, ADDR 0x48 W/R, ACK/NACK, DATA 0x16, STOP. Not raw JSON (T17 finding; the brief
       asks for this). Leave the `--json` shape alone.
 

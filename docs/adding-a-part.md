@@ -373,6 +373,8 @@ const address = () =>
   Then the circuit's wiring decides the address, as on the real board. Don't
   add a prop for it.
 
+- `address()` must have no side effects: the bus calls it at every address
+  phase, and diagnostics call it too, to name the devices on a bus.
 - The bus doesn't tell your part whether the address phase was a read or a
   write, nor whether the controller ACKed the byte it just read. You learn
   the direction from which of `write()` and `read()` is called next.
