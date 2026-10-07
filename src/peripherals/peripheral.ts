@@ -1,0 +1,49 @@
+// The Peripheral interface: one file per peripheral, registered in the chip
+// definition's `peripherals` list. A peripheral file holds behavior only. Its
+// registers, offsets and reset values come from the chip's register JSON, and the
+// memory bus does address decoding, byte lanes, clock gating and event logging.
+
+/**
+ * Register values by SVD register name, e.g. `regs.ODR`. Registers that share an
+ * offset (TIMx `CCMR1_Input`/`CCMR1_Output`) share one value, under the first name
+ * the JSON lists.
+ */
+export type Registers = Record<string, number>;
+
+/** An RCC enable bit, e.g. `{ register: "RCC.IOPENR", field: "IOPAEN" }`. */
+export interface ClockGate {
+  /** "<PERIPHERAL>.<REGISTER>" */
+  readonly register: string;
+  readonly field: string;
+}
+
+export interface Peripheral {
+  /** SVD peripheral name, e.g. "GPIOA". */
+  readonly name: string;
+  /**
+   * Enforced by the memory bus from the gate register's stored value: while the
+   * bit is 0, writes are ignored and reads return 0, both flagged "clock-off".
+   */
+  readonly gate?: ClockGate;
+  create(ctx: PeripheralContext): PeripheralInstance;
+}
+
+export interface PeripheralContext {
+  /** This peripheral's register values, owned by the bus. */
+  readonly regs: Registers;
+}
+
+export interface PeripheralInstance {
+  /** Chip reset. The bus has already put every register back to its reset value. */
+  reset?(): void;
+  /** By register name: the value the CPU reads. Default: `regs[name]`. */
+  readonly read?: Readonly<Record<string, () => number>>;
+  /**
+   * By register name. `value` is the whole register: the bytes the CPU wrote, and
+   * the rest from `regs[name]`. `mask` marks the bits it wrote (0xffffffff for a
+   * word). Default: `regs[name] = value`.
+   */
+  readonly write?: Readonly<
+    Record<string, (value: number, mask: number) => void>
+  >;
+}
