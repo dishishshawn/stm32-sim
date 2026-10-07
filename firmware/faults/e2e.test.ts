@@ -1,7 +1,9 @@
-// Acceptance 3, the first two fault tests. Each fault is tc74-read with one
+// Acceptance 3, the fault tests. Each fault is a working example with one
 // mistake, and each must fail the way the real board does: no simulator error
-// and no HardFault, just firmware waiting forever for a flag that never comes,
-// because tc74-read's wait loops have no timeout.
+// and no HardFault. The first two are tc74-read, which waits forever for a flag
+// that never comes, because its wait loops have no timeout. The last three are
+// the thermometer's own ELF on its circuit with one wiring mistake; its I2C
+// helpers give up on a NACK, so it runs on and shows the wrong thing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -132,4 +134,80 @@ test("no pull-ups on SDA/SCL: BUSY is set, and the firmware hangs waiting on TXI
   assert.equal(s.pins.PB7, "floating");
   assert.equal(s.registers.I2C1.ISR & ISR_BUSY, ISR_BUSY);
   assertHangsOnTxis(r, "firmware/tc74-read/main.c");
+});
+
+// ----- The thermometer (firmware/thermometer) with one wiring mistake ------
+
+const THERMOMETER = "build/thermometer.elf";
+
+/** The firmware's DIGITS table (firmware/thermometer/main.c): bit 0 is A ... bit 6 G, 1 = pin high. */
+const DIGITS = [0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f];
+
+/** A 7-segment part's values (A–G, DP) as a bit mask, bit 0 = A. */
+const lit = (part: Readonly<Record<string, unknown>>) =>
+  (part.values as number[]).reduce((b, v, i) => b | (v << i), 0);
+
+/** A thermometer fault runs on: no hang in a wait loop, no HardFault, no core message. */
+function assertRunsOn(r: ReturnType<typeof run>) {
+  const s = r.snapshot;
+  assert.equal(s.halt, null, "the CPU stopped");
+  assert.equal(s.fault, null, "HardFault");
+  assert.deepEqual(s.log, []);
+  assert.ok(s.seconds >= 1, `ran ${s.seconds} s`);
+}
+
+test("MCP23017 RESET left floating: every transaction to 0x20 NACKs, the TC74 still answers, the display stays dark", () => {
+  const r = run(THERMOMETER, "firmware/faults/reset-floating/circuit.json");
+  assertRunsOn(r);
+  const addrs = r.trace.filter((e) => e.kind === "addr");
+  const mcp = addrs.filter((e) => e.addr === 0x20);
+  const tc74 = addrs.filter((e) => e.addr === 0x48);
+  assert.equal(mcp.length + tc74.length, addrs.length, "another address");
+  // Two setup writes, then a poll of GPIOB every 20 ms and a redraw every
+  // 250 ms: the firmware keeps trying, and the chip, held in reset, answers
+  // none of them.
+  assert.ok(mcp.length >= 50, `${mcp.length} transactions to 0x20`);
+  for (const e of mcp) assert.equal(e.ack, "nack", JSON.stringify(e));
+  // The TC74 on the same bus is fine: a read every 250 ms, each a write of
+  // the pointer then a read, and 22 comes back.
+  assert.ok(tc74.length >= 6, `${tc74.length} transactions to 0x48`);
+  for (const e of tc74) assert.equal(e.ack, "ack", JSON.stringify(e));
+  assert.ok(r.trace.some((e) => e.kind === "data" && e.read && e.byte === 22));
+  // In reset every MCP23017 pin is an input (IODIR = 0xFF, hi-z), so the
+  // segment anodes float and nothing lights.
+  const { io, tens, units } = r.snapshot.parts;
+  assert.equal(io.reset, true);
+  assert.deepEqual(tens.values, [0, 0, 0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(units.values, [0, 0, 0, 0, 0, 0, 0, 0]);
+});
+
+test("tens segments one pin over (GPA1..GPA7 to A..G): a 2 lights A C D F, which is no digit", () => {
+  // The seven wires sit one pin along the MCP23017's header: segment A's wire
+  // is on GPA1 instead of GPA0, ..., G's on GPA7, and GPA0 drives nothing. So
+  // each segment shows the next bit of the pattern, and G shows GPA7, an
+  // output the firmware always drives low: the pattern shifted right by one.
+  const r = run(THERMOMETER, "firmware/faults/segments-shifted/circuit.json");
+  assertRunsOn(r);
+  const { tens, units } = r.snapshot.parts;
+  assert.equal(DIGITS[2] >> 1, 0x2d);
+  assert.deepEqual(tens.values, [1, 0, 1, 1, 0, 1, 0, 0]); // A C D F
+  assert.equal(lit(tens), DIGITS[2] >> 1);
+  assert.ok(!DIGITS.includes(lit(tens)), "the tens digit reads as a digit");
+  // The units digit, wired right, still shows its 2.
+  assert.equal(lit(units), DIGITS[2]);
+});
+
+test("common-anode digits driven with common-cathode patterns: 22 lights only C and F on each digit", () => {
+  // COM is at 3V3, so a segment lights when its pin is low: the complement
+  // of the pattern. The firmware drives 2 (A B D E G) high on both digits;
+  // C and F are the pins it drives low. DP's pin isn't wired, so stays dark.
+  const r = run(THERMOMETER, "firmware/faults/wrong-polarity/circuit.json");
+  assertRunsOn(r);
+  const { tens, units } = r.snapshot.parts;
+  assert.equal(~DIGITS[2] & 0x7f, 0x24);
+  for (const digit of [tens, units]) {
+    assert.deepEqual(digit.values, [0, 0, 1, 0, 0, 1, 0, 0]); // C F
+    assert.equal(lit(digit), ~DIGITS[2] & 0x7f);
+    assert.ok(!DIGITS.includes(lit(digit)), "a digit reads as a digit");
+  }
 });
