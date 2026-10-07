@@ -433,22 +433,25 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
 ### T18: MCP23017 part
 
-- [ ] Address 0x20 | A2..A0, read from the pin levels at transaction time. RESET low
+- [x] Address 0x20 | A2..A0, read from the pin levels at transaction time. RESET low
       or floating NACKs every address, and its release restores the power-on
       register state.
-- [ ] The full BANK=0 register map (0x00–0x15): IODIR (reset 0xFF), IPOL, GPINTEN,
+- [x] The full BANK=0 register map (0x00–0x15): IODIR (reset 0xFF), IPOL, GPINTEN,
       DEFVAL, INTCON, IOCON (two addresses), GPPU, INTF, INTCAP, GPIO, OLAT.
   - GPPU applies a weak 100 kΩ pull-up.
   - A GPIO read applies IPOL; a write goes to OLAT.
   - The pointer auto-increments unless IOCON.SEQOP=1.
   - BANK=1 and INTA/INTB are logged as not simulated.
-- [ ] Tests:
+- [x] Tests:
   - the address follows the A pins;
   - floating RESET NACKs;
   - a sequential IODIRA/IODIRB write auto-increments;
   - GPPU makes an unconnected input read 1;
   - OLAT drives the GPA nets.
 
+- [ ] Follow-up, not needed for the MVP: on rev D parts (DS20001952D) GPA7 and GPB7 are
+      output-only, but here they still work as inputs. INTA/INTB stay hi-z, while a
+      real part drives them high when idle. Both are marked in `mcp23017.ts`.
 **Verify:** `node --test src/parts/mcp23017.test.ts`. **Blocked by:** T13. **Wave 3.**
 **Files:** `mcp23017.ts`, its test, `index.ts`. **Size:** M.
 
