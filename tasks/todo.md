@@ -214,19 +214,19 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
 
 ### T8: RCC and GPIOA/GPIOB
 
-- [ ] Extend the T7 `Peripheral` contract, as the T7 review agreed: `nets` and
+- [x] Extend the T7 `Peripheral` contract, as the T7 review agreed: `nets` and
       `regsOf(name)` (a read-only view of another peripheral's registers; I2C1 needs
       GPIOB's MODER/AFR) on `PeripheralContext`, passed through the `MemoryBus`
       options. Add the G031K8 pin list to the chip definition, for circuit validation.
-- [ ] `src/peripherals/rcc.ts`: IOPENR and APBENR1. These are the bits the bus reads
+- [x] `src/peripherals/rcc.ts`: IOPENR and APBENR1. These are the bits the bus reads
       for gating.
-- [ ] `src/peripherals/gpio.ts`: MODER, OTYPER, PUPDR, IDR, ODR, BSRR, AFRL and AFRH.
+- [x] `src/peripherals/gpio.ts`: MODER, OTYPER, PUPDR, IDR, ODR, BSRR, AFRL and AFRH.
       Pins drive nets according to their mode:
   - output: push-pull or open-drain;
   - input: pull-up/down;
   - analog: hi-z;
   - AF: owned by the peripheral selected by the AF number.
-- [ ] Tests:
+- [x] Tests:
   - with IOPENR.GPIOAEN = 0, a MODER write has no effect;
   - PA0 output high makes the net high;
   - BSRR with both bits set for a pin sets it;
@@ -251,7 +251,9 @@ definition list. **Size:** M.
     past the image. The startup code zeroes `.bss` in RAM (T6 finding);
   - `runFor(simTime)`, `step()` and `snapshot()`, which reports pins, registers, the
     PC as file:line, and halt/fault state;
-  - time comes from cycles at 16 MHz, and peripheral ticks are scheduled by time.
+  - time comes from cycles at 16 MHz, and peripheral ticks are scheduled by time;
+  - create a new `Nets` on every load: listeners can't be removed, so a reused `Nets`
+    would keep calling the old bus (T8 finding).
 - [ ] `firmware/blink/circuit.json` (`mcu` only) and an end-to-end test: in 100 ms of
       simulated time, the PA0 net toggles the expected number of times.
 - [ ] Determinism: two runs give identical event logs.
@@ -371,9 +373,17 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
   APBENR1.I2C1EN gates I2C1 through the bus. Using RELOAD or 10-bit addressing is
   logged as not simulated. The time per byte comes from TIMINGR (approximate).
 
-- [ ] The pins connect only if PB6/PB7 are in AF mode with AF6. Otherwise nothing
-      reaches the nets and the trace stays empty. A bus that isn't idle sets BUSY,
-      and START never goes out. Anything RM0444 doesn't specify is marked "assumed".
+- [ ] Pin routing through AF endpoints (agreed at the T8 merge). `Nets` keeps one
+      drive per endpoint, so I2C1 must not share `mcu.PB6`/`mcu.PB7` with GPIO.
+  - I2C1 owns `mcu.I2C1_SCL` and `mcu.I2C1_SDA`, and its `I2cBus` sits on those.
+  - GPIO joins a pin to an AF endpoint with a switch while the pin is in AF mode with
+    the matching AFR value. The mapping comes from a per-chip AF table in the chip
+    definition (MVP: PB6 AF6 → `I2C1_SCL`, PB7 AF6 → `I2C1_SDA`).
+  - So a pin that isn't routed (wrong MODER/AFR, or the GPIO clock off so MODER never
+    changed) leaves I2C1 cut off with no special case, and GPIO's PUPDR pull stays on
+    the pin.
+  - A bus that isn't idle sets BUSY, and START never goes out. Anything RM0444
+    doesn't specify is marked "assumed".
 - [ ] Tests against a fake target:
   - a 1-byte write with AUTOEND gives the trace and the flag order TXIS → STOPF;
   - a 2-byte read;
@@ -461,8 +471,8 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 - [ ] Follow-up, not needed for the MVP: on rev D parts (DS20001952D) GPA7 and GPB7 are
       output-only, but here they still work as inputs. INTA/INTB stay hi-z, while a
       real part drives them high when idle. Both are marked in `mcp23017.ts`.
-**Verify:** `node --test src/parts/mcp23017.test.ts`. **Blocked by:** T13. **Wave 3.**
-**Files:** `mcp23017.ts`, its test, `index.ts`. **Size:** M.
+      **Verify:** `node --test src/parts/mcp23017.test.ts`. **Blocked by:** T13. **Wave 3.**
+      **Files:** `mcp23017.ts`, its test, `index.ts`. **Size:** M.
 
 ### T19: LED and 7-segment parts
 

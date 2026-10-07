@@ -1,7 +1,7 @@
 // The chip's address space behind the core's Bus interface. Flash and SRAM are
 // byte arrays. Everything else is a peripheral register, decoded by address from
 // the chip's register JSON. Byte lanes, clock gating and event logging happen
-// here, once, for every peripheral. Choices are recorded in docs/decisions.md §7.
+// here, once, for every peripheral. Choices are recorded in docs/decisions.md §8.
 
 import { BusFault } from "../cpu/bus.ts";
 import type { Bus } from "../cpu/bus.ts";
@@ -228,7 +228,7 @@ export class MemoryBus implements Bus {
       return set(this.#sramView, s, size, data);
     const f = a >= this.#flashBase ? a - this.#flashBase : a;
     if (f + size <= this.flash.length) {
-      // Ignored: programming needs FLASH_CR.PG and double-word writes (§7).
+      // Ignored: programming needs FLASH_CR.PG and double-word writes (§8).
       if (this.#events.active) {
         const old = get(this.#flashView, f, size);
         const value =
