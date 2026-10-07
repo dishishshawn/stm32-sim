@@ -11,6 +11,8 @@ const board = {
   regs: {},
   level: () => "floating" as const,
   where: (pc: number) => `main.c:${pc}`,
+  sameNet: () => false,
+  parts: [],
 };
 
 /** An access at `cycle`, with the PC equal to the cycle. */

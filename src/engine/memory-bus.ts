@@ -7,6 +7,7 @@ import { BusFault } from "../cpu/bus.ts";
 import type { Bus } from "../cpu/bus.ts";
 import type { EventLog, Flag } from "./events.ts";
 import type { Nets } from "./nets.ts";
+import type { AfTable } from "../peripherals/gpio.ts";
 import type {
   ClockGate,
   Cpu,
@@ -62,6 +63,8 @@ export interface Chip {
   readonly pins: readonly string[];
   /** The registration list: one entry per simulated peripheral. */
   readonly peripherals: readonly Peripheral[];
+  /** The alternate functions GPIO routes, e.g. `{ PB6: { 6: "I2C1_SCL" } }`; diagnostics read it too. */
+  readonly af: AfTable;
 }
 
 export interface MemoryBusOptions {

@@ -1,7 +1,8 @@
 // The diagnostic rule interface. A rule explains a likely mistake and never
 // alters behavior (AGENTS.md): it gets each event and read-only views of the
 // board, and returns what it found. diagnose() runs the rules over an event log
-// and counts repeats, so a mistake inside a loop is reported once.
+// and counts repeats, so a mistake inside a loop is reported once. A rule that
+// throws is reported as a "rule-error" diagnostic, and the run goes on.
 import type { BoardView } from "../engine/engine.ts";
 import type { EventLog, SimEvent } from "../engine/events.ts";
 
@@ -47,8 +48,25 @@ export function diagnose(
   const found = new Map<string, Diagnostic>();
   events.subscribe((event) => {
     for (const rule of rules) {
-      for (const f of rule.check(event, board)) {
-        const key = `${rule.id}\n${f.message}`;
+      let id = rule.id;
+      let findings: readonly Finding[];
+      try {
+        findings = rule.check(event, board);
+      } catch (e) {
+        // A bug in a rule must not stop or change the run: report it instead.
+        id = "rule-error";
+        const why = e instanceof Error ? e.message : String(e);
+        findings = [
+          {
+            severity: "info",
+            message:
+              `the diagnostic rule "${rule.id}" failed: ${why}. The run is ` +
+              "unaffected, but that rule's findings may be missing",
+          },
+        ];
+      }
+      for (const f of findings) {
+        const key = `${id}\n${f.message}`;
         const seen = found.get(key);
         if (seen) {
           seen.count++;
@@ -56,7 +74,7 @@ export function diagnose(
         }
         const pc = event.kind === "reg" ? event.pc : null;
         found.set(key, {
-          rule: rule.id,
+          rule: id,
           ...f,
           count: 1,
           cycle: event.cycle,
