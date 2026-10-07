@@ -9,6 +9,9 @@ import type { Chip } from "../engine/memory-bus.ts";
 export const hex32 = (a: number): string =>
   `0x${a.toString(16).padStart(8, "0")}`;
 
+/** A frequency as diagnostics and `sim inspect` print it: "64 MHz", "2.667 MHz". */
+export const mhz = (hz: number): string => `${+(hz / 1e6).toFixed(3)} MHz`;
+
 /** "GPIOB_MODER (0x50000400)". */
 export function regName(chip: Chip, periph: string, reg: string): string {
   const p = chip.registers.peripherals[periph];
