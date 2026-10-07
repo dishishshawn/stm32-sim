@@ -541,10 +541,15 @@ T19, T20. **Wave 7.** **Files:** `firmware/thermometer/{main.c,circuit.json,e2e.
 
 Each test asserts the failure real hardware shows, not a simulator error.
 
-- [ ] The firmware enables the GPIOA clock, but the I2C pins are on GPIOB. The trace
+- [x] The firmware enables the GPIOA clock, but the I2C pins are on GPIOB. The trace
       stays empty and the PC sits in the wait loop (file:line).
-- [ ] The pull-up resistors are removed from the circuit. ISR.BUSY is set, and the
+- [x] The pull-up resistors are removed from the circuit. ISR.BUSY is set, and the
       firmware hangs waiting on TXIS.
+
+- Note (T22): RM0444 doesn't say what an unrouted I2C input reads. The simulator treats it as
+  floating, so BUSY is set and START never goes out. Real silicon might instead NACK
+  internally and retry. The bus is empty either way, and the test doesn't assert BUSY
+  for this fault. Check on a real board.
 
 **Verify:** `node --test 'firmware/faults/**/*.test.ts'`. **Blocked by:** T17. **Wave 7.** The two
 cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pullups}/…`.
