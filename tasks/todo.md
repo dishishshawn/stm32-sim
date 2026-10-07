@@ -557,10 +557,10 @@ cases can be split between agents. **Files:** `firmware/faults/{gpio-clock,no-pu
 
 ### T23: Fault tests: RESET floating, segments off by one, wrong polarity
 
-- [ ] With the MCP23017 RESET left unconnected, every address NACKs in the trace.
-- [ ] With the segment wires shifted by one pin, the digits show the exact scrambled
+- [x] With the MCP23017 RESET left unconnected, every address NACKs in the trace.
+- [x] With the segment wires shifted by one pin, the digits show the exact scrambled
       pattern; assert the specific wrong segments.
-- [ ] With a common-anode display driven by the common-cathode patterns, the inverted
+- [x] With a common-anode display driven by the common-cathode patterns, the inverted
       segments light.
 
 **Verify:** `node --test 'firmware/faults/**/*.test.ts'`. **Blocked by:** T21. **Wave 8.**
