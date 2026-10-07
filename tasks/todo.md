@@ -522,7 +522,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
 ### T21: Thermometer firmware; acceptance test 2
 
-- [ ] `firmware/thermometer/` is written for this repo:
+- [x] `firmware/thermometer/` is written for this repo:
   - it reads the TC74;
   - MCP23017 port A drives the tens digit (A–G) and GPB1–GPB7 drive the units digit;
   - a button on GPB0 (with GPPU on) toggles °C/°F on each press edge;
@@ -530,7 +530,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
   The `circuit.json` uses common-cathode digits.
 
-- [ ] Decode the digits from the 7-segment `values`. At 22 the display shows "22";
+- [x] Decode the digits from the 7-segment `values`. At 22 the display shows "22";
       after one press it shows "71"; after a second press it shows "22".
 
 **Verify:** `just fw && node --test 'firmware/thermometer/**/*.test.ts'`. **Blocked by:** T17, T18,
