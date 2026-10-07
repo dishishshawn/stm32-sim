@@ -567,8 +567,11 @@ driven (`mcu.PB12` stays unconnected).
 - `src/chips/index.ts` is the chip registration list, which `load` looks
   `circuit.chip` up in; `catalog` (in `engine.ts`) is the parts and chips list for
   `parseCircuit`.
-- Not done: the core's `logger` (HardFault and lockup messages) still goes to the
-  console; the lockup reason is in the snapshot.
+- **The core's `logger`** (HardFault and lockup messages) goes into the snapshot's
+  `log` (the first 100 since load), not the console (T10). The snapshot's `fault`
+  is the HardFault the CPU is in (IPSR = 3): the PC stacked on entry (SP+24, from
+  the stack EXC_RETURN names) as `file:line`, and the core's reason. `sim` reports
+  it and exits 1 (`docs/cli.md`).
 - Speed: blink runs at about 4.2 simulated seconds per wall-clock second (Node 24,
   this laptop).
 
