@@ -29,6 +29,17 @@ const ARROWS: Record<string, [number, number]> = {
   ArrowUp: [0, -1],
   ArrowDown: [0, 1],
 };
+/** Keys that move between a breadboard's holes: a direction, and whether to go as far as it can. */
+const ROVE: Record<string, [number, number, boolean]> = {
+  ArrowLeft: [-1, 0, false],
+  ArrowRight: [1, 0, false],
+  ArrowUp: [0, -1, false],
+  ArrowDown: [0, 1, false],
+  Home: [-1, 0, true],
+  End: [1, 0, true],
+  PageUp: [0, -1, true],
+  PageDown: [0, 1, true],
+};
 /** The drag data of a part type dragged from the palette. */
 const PART_TYPE = "application/x-sim-part-type";
 
@@ -367,13 +378,20 @@ function render() {
       control.append(label, output);
       content.push(control);
     }
+    const breadboard = p.type === "breadboard";
     const spots = pinSpots(p.type).map((s): [string, string, Spot] => [
-      `${p.id} pin ${s.pin}`,
+      `${p.id} ${breadboard ? "hole" : "pin"} ${s.pin}`,
       `${p.id}.${s.pin}`,
       s,
     ]);
     const fig = place(p.id, pos.x, pos.y, visual, spots, ...content);
     fig.dataset.type = p.type;
+    // A breadboard's holes are one tab stop; the arrow keys move between
+    // them (rove()), and the focused one becomes the stop.
+    if (breadboard)
+      fig
+        .querySelectorAll<HTMLElement>(".pin-target")
+        .forEach((b, i) => (b.tabIndex = i ? -1 : 0));
     movable(fig, circuit.parts[i]);
   });
 
@@ -436,19 +454,37 @@ function zoom() {
 
 /**
  * Drag with the pointer, or the arrow keys for one grid step; either writes
- * the part's "pos". Delete asks, then removes it. Moving restarts the
- * simulation only if it plugs pins into a breadboard or pulls them out
- * (plugs()): "pos" itself isn't simulated.
+ * the part's "pos", seats it in a breadboard's holes if it ends over them,
+ * and a breadboard carries the parts plugged into it. Delete asks, then
+ * removes it. Moving restarts the simulation only if it plugs pins into a
+ * breadboard or pulls them out (plugs()): "pos" itself isn't simulated.
  */
 function movable(fig: HTMLElement, part: CircuitPart) {
   fig.tabIndex = 0;
   fig.title = "Drag or use the arrow keys to move it; Delete removes it";
-  const put = (pos: { x: number; y: number }) => {
+  /** The plugs before a move, and the parts plugged into this one (a breadboard), which it carries. */
+  const grab = () => {
+    const before = plugs();
+    const carried = circuit.parts.filter((p) =>
+      before.some(
+        ([pin, hole]) =>
+          pin.startsWith(`${p.id}.`) && hole.startsWith(`${part.id}.`),
+      ),
+    );
+    return { before, carried };
+  };
+  const put = (pos: { x: number; y: number }, carried: CircuitPart[]) => {
     const old = where(part);
-    if (pos.x === old.x && pos.y === old.y) return;
-    part.pos = pos;
-    fig.style.left = `${pos.x}px`;
-    fig.style.top = `${pos.y}px`;
+    const dx = pos.x - old.x;
+    const dy = pos.y - old.y;
+    if (!dx && !dy) return;
+    for (const p of [part, ...carried]) {
+      const at = where(p);
+      p.pos = p === part ? pos : { x: tenth(at.x + dx), y: tenth(at.y + dy) };
+      const f = document.querySelector<HTMLElement>(`[data-part="${p.id}"]`)!;
+      f.style.left = `${p.pos.x}px`;
+      f.style.top = `${p.pos.y}px`;
+    }
     fit();
     drawWires();
   };
@@ -457,12 +493,17 @@ function movable(fig: HTMLElement, part: CircuitPart) {
     const step = ARROWS[e.key];
     if (step) {
       e.preventDefault();
-      const before = plugs();
+      const { before, carried } = grab();
       const x = where(part).x + step[0] * GRID;
       const y = where(part).y + step[1] * GRID;
       // A part in a breadboard moves hole to hole, not back onto the grid.
       const plugged = before.some(([pin]) => pin.startsWith(`${part.id}.`));
-      put(plugged ? { x: tenth(x), y: tenth(y) } : { x: snap(x), y: snap(y) });
+      put(
+        plugged ? { x: tenth(x), y: tenth(y) } : { x: snap(x), y: snap(y) },
+        carried,
+      );
+      const seated = seat(part);
+      if (seated) put(seated, carried);
       replug(part, before);
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
@@ -477,7 +518,7 @@ function movable(fig: HTMLElement, part: CircuitPart) {
     if (own || e.button !== 0) return;
     fig.setPointerCapture(e.pointerId);
     const from = { ...where(part), cx: e.clientX, cy: e.clientY, z: zoom() };
-    const before = plugs();
+    const { before, carried } = grab();
     let moved = false;
     const drag = (e: PointerEvent) => {
       const dx = (e.clientX - from.cx) / from.z;
@@ -485,7 +526,7 @@ function movable(fig: HTMLElement, part: CircuitPart) {
       // A click isn't a move: it would snap an unmoved part to the grid.
       if (!moved && Math.hypot(dx, dy) < GRID / 2) return;
       moved = true;
-      put({ x: snap(from.x + dx), y: snap(from.y + dy) });
+      put({ x: snap(from.x + dx), y: snap(from.y + dy) }, carried);
     };
     fig.addEventListener("pointermove", drag);
     fig.addEventListener(
@@ -494,12 +535,39 @@ function movable(fig: HTMLElement, part: CircuitPart) {
         fig.removeEventListener("pointermove", drag);
         if (!moved) return;
         const seated = seat(part);
-        if (seated) put(seated);
+        if (seated) put(seated, carried);
         replug(part, before);
       },
       { once: true },
     );
   });
+}
+
+/**
+ * The hole a key goes to from `pin`: the nearest in its direction (or the
+ * farthest, for Home, End, PageUp and PageDown), in its column or the nearest
+ * one that has a hole there. Left and right stay in the row.
+ */
+function rove(
+  spots: readonly Spot[],
+  pin: string,
+  [dx, dy, far]: [number, number, boolean],
+) {
+  const at = spots.find((s) => s.pin === pin)!;
+  let best: { s: Spot; along: number; across: number } | undefined;
+  for (const s of spots) {
+    const along = (s.x - at.x) * dx + (s.y - at.y) * dy;
+    const across = Math.abs((s.x - at.x) * dy - (s.y - at.y) * dx);
+    if (along <= 0 || (dx && across)) continue;
+    if (
+      !best ||
+      across < best.across ||
+      (across === best.across &&
+        (far ? along > best.along : along < best.along))
+    )
+      best = { s, along, across };
+  }
+  return best?.s;
 }
 
 /** Every breadboard hole on the canvas. */
@@ -717,6 +785,26 @@ function mountEditing() {
     if (fig) select(fig.dataset.part);
     const pin = (e.target as Element).closest<HTMLElement>(".pin-target");
     if (pin && pending !== undefined) band(spot(pin.dataset.endpoint!));
+    // A breadboard's focused hole is its one tab stop.
+    if (pin && fig?.dataset.type === "breadboard") {
+      const stop = fig.querySelector<HTMLElement>('.pin-target[tabindex="0"]');
+      if (stop) stop.tabIndex = -1;
+      pin.tabIndex = 0;
+    }
+  });
+  // On a breadboard's hole, the arrow keys (and Home, End, PageUp, PageDown) move to another.
+  canvas.addEventListener("keydown", (e) => {
+    const hole = (e.target as Element).closest<HTMLElement>(
+      '[data-type="breadboard"] .pin-target',
+    );
+    if (!hole || !ROVE[e.key]) return;
+    e.preventDefault();
+    const [id, pin] = hole.dataset.endpoint!.split(".");
+    const to = rove(pinSpots("breadboard"), pin, ROVE[e.key]);
+    if (to)
+      document
+        .querySelector<HTMLElement>(`[data-endpoint="${id}.${to.pin}"]`)!
+        .focus();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || pending === undefined) return;

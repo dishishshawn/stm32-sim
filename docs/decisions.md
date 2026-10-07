@@ -1024,7 +1024,8 @@ part.
 - **Pins.** Every pin gets a `<button class="pin-target">` on its part,
   titled `led1 pin A` (`board pin PB6 (D1)` on the Nucleo), with its endpoint
   in `data-endpoint`. Buttons, so Tab reaches them and Enter clicks them; a
-  breadboard's 400 holes are 400 tab stops, which is workable but slow. Board
+  breadboard's 400 holes, titled `breadboard1 hole e12`, are one tab stop
+  since T44 (below). Board
   pins are its header positions with an `endpoint`. GND is on two, and a wire
   to GND is drawn to the first. A part with neither an element nor art (TMP102,
   MCP9808) gets its pins in a row along the top of its box, 0.1 in apart.
@@ -1077,11 +1078,9 @@ part.
     `moved led1 (0 in, 2 out)`. A wire drawn from a pin to a far hole isn't a
     plug, so it stays and stretches.
   - Arrow keys: a part with plugs steps exactly 0.1 in (staying hole to
-    hole); otherwise it snaps to the grid as in T31, and isn't seated, since
-    the grid and the holes are half a pitch apart in places. So a keyboard
-    user plugs a part in with wires to holes.
-  - Moving a breadboard doesn't carry its parts: they stay, and come
-    unplugged. Moving it back plugs them in again.
+    hole); otherwise it snaps to the grid as in T31. Since T44 it is then
+    seated, as a drop is.
+  - Since T44 a moved breadboard carries the parts plugged into it (below).
 - **Tests:** `src/ui/wire.test.ts`. The thermometer rebuilt in the page
   from an empty circuit: all seven parts from the palette, their props set in
   the Part panel (T43, below), and all 34 wires clicked in. It shows 22, then
@@ -1121,6 +1120,34 @@ part.
   `11011010`; set to anode it is dark, and with its common moved to 3V3 it
   lights `00100101`. A common-anode display's common goes to the high rail,
   so the prop alone can't invert the lit segments. About 9 s for the two.
+
+**The breadboard from the keyboard, and moving it (T44).** In `main.ts`.
+
+- **One tab stop for 400 holes: a roving tabindex.** One hole has
+  `tabindex="0"` (a1 after each redraw), the rest `-1`; a focused hole becomes
+  the stop, so Tab leaves the board and Shift+Tab comes back to the same hole.
+  The figure stays a stop of its own, as every part's is, because its arrow
+  keys move the board. On a hole, the arrow keys go to the nearest hole that
+  way, in the same column or the nearest column that has one (`rove()`, from
+  the art's positions, so no grid model). Left and right stay in the row.
+  Home and End go to the row's ends, PageUp and PageDown to the farthest hole
+  up or down: the rails. Enter clicks the hole, so it wires as before.
+- **Arrow keys seat.** After the grid step, `seat()` runs as on a drop. It
+  can't hold a part in place: a seat moves at most 0.75 grid against a 1
+  grid step, and a part seated has a plug, so its next step is exactly 0.1 in.
+- **A breadboard carries its parts.** At the start of a move (drag or key)
+  the parts with a plug into it are noted; each `put()` moves them by the
+  board's offset. Their plugs keep their distance, so `rewire()` finds no
+  change and nothing restarts. A part that lands on its holes by the move
+  is plugged in, with a restart, as before.
+- **Tests:** `src/ui/breadboard.test.ts`. Tab and the eight keys from a1
+  (a2, b2, b30, tn25, tn1, bn1, bp1, and bp1 again at the rail's end), one
+  Tab out to the next part and back, Enter to Enter wires bp1 to j2, and one
+  stop still. One ArrowDown seats an LED in a10/a9 at the drop's (80.6,
+  97.2), with jumpers already in the file, and it blinks. A breadboard with
+  that LED plugged in, dragged by its channel and then moved by ArrowRight:
+  the LED moves with it, the header stays empty, the time goes on, it
+  blinks, and the wires are unchanged. About 3 s for the three.
 
 **Headless UI tests: `playwright-core` driven from `node:test`.**
 
