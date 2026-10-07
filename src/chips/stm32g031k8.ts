@@ -1,5 +1,6 @@
 // The STM32G031K8 (NUCLEO-G031K8). Chip-specific facts live here, not in the engine.
 import type { Chip } from "../engine/memory-bus.ts";
+import { flash } from "../peripherals/flash.ts";
 import { gpio } from "../peripherals/gpio.ts";
 import type { AfTable } from "../peripherals/gpio.ts";
 import { i2c1 } from "../peripherals/i2c.ts";
@@ -61,6 +62,7 @@ const af: AfTable = {
 export const stm32g031k8: Chip = {
   name: "STM32G031K8",
   core: "cortex-m0+",
+  // The clock after reset, HSI16. RCC changes it (docs/decisions.md §14).
   clockHz: 16_000_000,
   irqCount: 32,
   flash: { base: 0x0800_0000, size: 64 * 1024 },
@@ -80,6 +82,7 @@ export const stm32g031k8: Chip = {
   // Every SVD register without one is plain storage, logged as "unsimulated".
   peripherals: [
     rcc,
+    flash,
     gpio("GPIOA", { register: "RCC.IOPENR", field: "GPIOAEN" }, pins, af),
     gpio("GPIOB", { register: "RCC.IOPENR", field: "GPIOBEN" }, pins, af),
     systick,

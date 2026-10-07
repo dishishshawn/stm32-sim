@@ -556,7 +556,7 @@ HSI16. **Assumed** (RM0444 §5.4.1): CR resets to `0x0000_0500`. HSION and HSIRD
 stay 1, since HSI16 is the system clock. HSERDY and PLLRDY stay 0: HSE and the PLL
 aren't simulated, so firmware waiting for them stops there, visibly, instead of
 running at a clock the simulator doesn't model. HSIDIV and CFGR are plain storage;
-the core stays at 16 MHz.
+the core stays at 16 MHz. (Superseded by §14: RCC models the clock tree.)
 
 **GPIO.** One `gpio(name, gate, pins)` for every port. Only pins on the package are
 driven (`mcu.PB12` stays unconnected).
@@ -586,14 +586,15 @@ driven (`mcu.PB12` stays unconnected).
   effect), IOPRSTR port resets.
 - Registering a peripheral marks all its registers simulated, so RCC's PLLCFGR, for
   example, is no longer flagged `unsimulated`. Revisit with a per-register flag if a
-  diagnostic needs it.
+  diagnostic needs it. (§14 added one: `Peripheral.simulates`.)
 
 ## 10. Engine run loop (T9)
 
 `src/engine/engine.ts`. `load(elfBytes, circuit)`, `runFor(seconds)`, `step()`,
 `snapshot()`, and the `events` log.
 
-- **Time is CPU cycles** (`core.cycles`) at the chip's `clockHz`. `runFor` takes
+- **Time is CPU cycles** (`core.cycles`) at the chip's `clockHz` (§14: at the
+  HCLK of each moment). `runFor` takes
   simulated **seconds**, as the CLI's `--for 2s` does, and stops at the first
   instruction boundary at or past them (an instruction takes a few cycles), or early on
   lockup or BKPT. Nothing reads the wall clock (`runRealtime`, §11, only waits on it).
@@ -724,8 +725,8 @@ I2C1EN = 1, so flags appear over simulated time:
 - An SCL period is `(SCLH + 1 + SCLL + 1) × (PRESC + 1)` cycles plus 4 for the sync
   delays (§32.4.9; Table 173 note 2 gives 4 as their minimum), plus DNF per edge.
   START with the address counts as 10 periods, a byte 9, a STOP 1. **Assumed:**
-  I2CCLK is the 16 MHz core clock; the analog filter delay and SDADEL/SCLDEL are not
-  counted. 100 kHz from Table 173 comes out at 9.25 µs per period instead of ~10.
+  I2CCLK is the 16 MHz core clock (§14: I2C1SEL's clock now); the analog filter
+  delay and SDADEL/SCLDEL are not counted. 100 kHz from Table 173 comes out at 9.25 µs per period instead of ~10.
 - Flag rules from RM0444: TXIS after the address ACK and again as soon as a byte is
   copied to the shift register if another is due (Figure 303); SCL held while TXDR
   is empty or RXDR unread (§32.4.7); the last read byte NACKed (§32.4.9); a NACK sets
@@ -770,6 +771,97 @@ I2C1EN = 1, so flags appear over simulated time:
 - `Chip` carries its AF table (`af`), which GPIO already used, so rules can name
   I2C1's candidate pins.
 - Field names in messages are the CMSIS names (§4), as in the learner's code.
+
+## 14. Clock tree, and time that follows the clock (T39)
+
+`src/peripherals/rcc.ts`, `src/peripherals/flash.ts`, the clock timeline in
+`src/engine/engine.ts`. Sources: RM0444 Rev 6 chapters 3 and 5, DS12992 Rev 4
+Tables 41–43, UM2591 Rev 2 Table 8, cited in the code. This supersedes §9's "HSE
+and the PLL aren't simulated ... the core stays at 16 MHz", §10's "cycles at the
+chip's `clockHz`" and §12's "I2CCLK is the 16 MHz core clock".
+
+**RCC.**
+
+- **Start-up.** ON → RDY after DS12992's typical time: HSI16 0.8 µs (Table 41),
+  PLL lock 15 µs (Table 43, tLOCK: 15 typical, 40 max), LSI 80 µs (Table 42).
+  It is counted in seconds at the HCLK of each tick. ON = 0 clears RDY at once
+  (**assumed**; RM0444 gives 6 HSI16 cycles for HSIRDY).
+- **HSE never gets ready.** On the NUCLEO-G031K8 its only source is the ST-LINK's
+  MCO through SB7 into PC14, and SB7 is off by default (UM2591 Table 8).
+  **Assumed:** an unmodified board. HSEON and HSEBYP are stored.
+- **LSE isn't simulated**: LSERDY never sets, and setting LSEON logs an
+  `unsimulated` event (`BDCR.LSEON`). The board does have the 32.768 kHz crystal
+  (SB8 and SB9 on), but its 2 s start-up and the RTC domain's write protection
+  (PWR_CR1.DBP) would need modelling first.
+- **PLL.** PLLRCLK = (input / M) × N / R (§5.4.4). The input is HSI16, or nothing
+  for PLLSRC = 00 or HSE. **Assumed:** a PLL with no input clock, or N = 0, never
+  locks; PLLR = 000 (reserved) divides by 1. The datasheet limits (input 2.66–16
+  MHz, VCO 96–344 MHz, PLLRCLK ≤ 64 MHz) aren't enforced: that's T42's
+  diagnostic. While PLLON = 1, writes to PLLSRC, M, N, P, Q and R are ignored,
+  and so is PLLREN while PLLRCLK is SYSCLK (§5.4.4: "can be written only when the
+  PLL is disabled"), silently, per AGENTS.md.
+- **SW → SWS** (§5.2.7): "A switch from one clock source to another occurs only
+  if the target clock source is ready", and "if a clock source which is not yet
+  ready is selected, the switch occurs when the clock source becomes ready". So
+  SW = PLL before PLLRDY leaves SWS on HSISYS until the lock, then switches. A
+  source that never gets ready (HSE, LSE, a PLL that is off, reserved values)
+  leaves SWS where it is. **Assumed:** the switch takes no extra cycles, and the
+  PLL counts as ready only with PLLREN set.
+- The source in use can't be stopped (§5.2.7, §5.4.1): HSION (directly or under
+  the PLL), PLLON, PLLREN and LSION stay set while it is SYSCLK.
+- HSIDIV → HSISYS, HPRE (1, 2, 4, 8, 16, 64, 128, 256, 512) → HCLK, PPRE → PCLK.
+  `clocks(regs)` in rcc.ts works out SYSCLK, HCLK and PCLK from the registers
+  alone; I2C1 uses it, and T42 can.
+- Not simulated: RCC interrupts (CIER/CIFR), CSS, MCO, the reset flags, HSI16
+  trimming. HSI48 isn't on the G031.
+
+**Time.**
+
+- **Contract addition:** `PeripheralContext.setCoreClock(hz)`, through
+  `MemoryBusOptions.setCoreClock` (default: ignored). RCC calls it when HCLK
+  changes.
+- The engine keeps a **clock timeline**: `(cycle, seconds, hz)` points, the first
+  being the chip's `clockHz` at cycle 0. `Engine.secondsAt(cycle)` converts any
+  cycle. The snapshot's `seconds` and the CLI's I2C trace times use it.
+  `Chip.clockHz` is only the reset clock now.
+- Deadlines stay in cycles, so the per-instruction compares are unchanged:
+  `runFor`'s end, the next part tick, and `setPropAt` changes. A clock change
+  moves them to keep their simulated time: part ticks and changes are worked out
+  again from their seconds, and the run's end is scaled by new hz / old hz.
+  `runRealtime` works out its end's cycle again for every 10 ms slice. At 16 MHz
+  with no change, this is the old arithmetic exactly: every earlier test and
+  cycle count is unchanged.
+- Part ticks fall on the cycle nearest each 1 ms, rounded per tick, so they
+  don't drift at clocks that aren't a whole number of kHz.
+- A clock change inside a WFI slice lands at the slice's end, up to 1 ms late,
+  as a wake-up does (§10).
+- **SysTick** needed no change: it counts core cycles, which are HCLK
+  (CLKSOURCE = 1), or HCLK/8.
+- **I2C1** counts in I2CCLK cycles, turned into core cycles (× HCLK / I2CCLK,
+  rounded) when each step starts. I2CCLK is CCIPR.I2C1SEL's: PCLK (reset
+  default), SYSCLK or HSI16; **assumed:** 11 (reserved) as PCLK. With PCLK =
+  HCLK this is the old timing exactly.
+- **Cost:** RCC ticks after every instruction, because a switch waiting for the
+  PLL must happen at the lock even if the firmware doesn't poll. Blink measured
+  about 15% slower (25 against 29 M cycles per wall second, pinned to one core,
+  noisy). If that matters: let `tick()` report idle until the peripheral's next
+  register write.
+
+**FLASH.** Registered with `simulates: ["ACR"]`, a new optional `Peripheral`
+field: the registers a peripheral models. The others stay plain storage flagged
+`unsimulated`, so FLASH_KEYR or FLASH_CR still say so. The default is all, as
+before (§9). ACR is plain storage: LATENCY reads back, which firmware polls
+(§3.3.4). Wait states have no effect; real silicon misreads flash with too few
+of them at a high HCLK (§3.3.4, Table 13), and T42 diagnoses that instead. No
+clock gate: RCC_AHBENR.FLASHEN resets to 1 (§5.4.14), but the SVD's AHBENR reset
+value is 0, so a gate would ignore every ACR write.
+
+**Example:** `firmware/pll-64mhz/` in exam style. PA5 blinks twice at 16 MHz,
+then the firmware sets LATENCY = 2, the PLL (HSI16 / 1 × 8 / 2), PLLON, waits
+for PLLRDY, switches SW and waits for SWS, starts SysTick at LOAD = 64000 − 1,
+and blinks with the same loop. Its test checks the period ratio (4), 1 ms
+SysTick interrupts, part ticks, `setPropAt` and real-time mode across the
+switch, and that every `#define` matches the register JSON.
 
 ## Checked against RM0444 Rev 6 (2026-10-07)
 

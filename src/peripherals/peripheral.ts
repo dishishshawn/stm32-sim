@@ -28,6 +28,11 @@ export interface Peripheral {
    * bit is 0, writes are ignored and reads return 0, both flagged "clock-off".
    */
   readonly gate?: ClockGate;
+  /**
+   * The registers it models, if not all of them, e.g. FLASH's `["ACR"]`. The
+   * others stay plain storage, flagged "unsimulated". Default: all.
+   */
+  readonly simulates?: readonly string[];
   create(ctx: PeripheralContext): PeripheralInstance;
 }
 
@@ -45,8 +50,16 @@ export interface PeripheralContext {
    * `regsOf("RCC").APBENR1`. Throws for an unknown name.
    */
   regsOf(name: string): Readonly<Registers>;
-  /** CPU cycles since reset: simulated time, at the chip's `clockHz`. */
+  /**
+   * CPU cycles since reset: simulated time. A cycle lasts 1/HCLK, and RCC can
+   * change HCLK, so cycles aren't a fixed number of seconds.
+   */
   now(): number;
+  /**
+   * The core clock (HCLK) is now `hz`: RCC calls it when SYSCLK or the AHB
+   * prescaler changes. The engine counts each cycle from now on as 1/hz s.
+   */
+  setCoreClock(hz: number): void;
   readonly cpu: Cpu;
   /** The circuit's mounted parts by id, read live: I2C1's bus finds its targets here. */
   readonly parts: Iterable<readonly [id: string, part: PartInstance]>;

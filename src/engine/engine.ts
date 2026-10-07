@@ -1,8 +1,9 @@
 // The headless engine: one board (chip, circuit and firmware) run in simulated
-// time. The CLI and the UI are thin layers over it. Time is CPU cycles at the
-// chip's clockHz. Only runRealtime() reads the wall clock, and only to wait, so
-// the same ELF and circuit always give the same run. Choices are recorded in
-// docs/decisions.md §10 and §11.
+// time. The CLI and the UI are thin layers over it. Time is CPU cycles, each
+// 1/HCLK seconds at the core clock of its moment, which RCC can change. Only
+// runRealtime() reads the wall clock, and only to wait, so the same ELF and
+// circuit always give the same run. Choices are recorded in docs/decisions.md
+// §10, §11 and §14.
 import { chips } from "../chips/index.ts";
 import { CortexM0Core } from "../cpu/cortex-m0-core.ts";
 import { parts as partTypes } from "../parts/index.ts";
@@ -59,7 +60,7 @@ export interface Halt {
 export interface Snapshot {
   /** CPU cycles since reset. */
   cycles: number;
-  /** Simulated seconds since reset: `cycles` at the chip's clockHz. */
+  /** Simulated seconds since reset: each cycle at the core clock (HCLK) of its moment. */
   seconds: number;
   pc: number;
   /** The PC as "file:line", else "function+0xoffset", else "0x08000123". */
@@ -121,6 +122,13 @@ export interface PartView {
 const LOG_LIMIT = 100;
 const HARDFAULT = 3;
 
+/** From `cycle` on, the core runs at `hz`; `seconds` is the simulated time at `cycle`. */
+interface ClockPoint {
+  cycle: number;
+  seconds: number;
+  hz: number;
+}
+
 interface Board {
   chip: Chip;
   elf: Elf;
@@ -128,12 +136,22 @@ interface Board {
   bus: MemoryBus;
   core: CortexM0Core;
   parts: Map<string, PartInstance>;
-  /** Cycles per part tick, and the cycle the next one is due at. */
-  partTick: number;
+  /** Every HCLK change, oldest first: the first is the chip's clockHz at cycle 0. */
+  clock: ClockPoint[];
+  /** The cycle the current run ends at. A clock change moves it, keeping its time. */
+  end: number;
+  /** Part ticks so far, and the cycle the next one is due at. */
+  partTicks: number;
   nextPartTick: number;
   circuit: Circuit;
-  /** setPropAt() changes not yet due, by cycle; equal cycles in the order scheduled. */
-  changes: { at: number; id: string; name: string; value: PropValue }[];
+  /** setPropAt() changes not yet due, by time; equal times in the order scheduled. `at` is the time's cycle. */
+  changes: {
+    seconds: number;
+    at: number;
+    id: string;
+    name: string;
+    value: PropValue;
+  }[];
 }
 
 export class Engine {
@@ -166,12 +184,17 @@ export class Engine {
         this.events.emit({ kind: "net", cycle: cycle(), endpoint, level });
     });
     const parts = new Map<string, PartInstance>();
+    let board: Board | undefined;
     const bus = new MemoryBus(chip, {
       events: this.events,
       now: () => ({ cycle: cycle(), pc: this.#pc }),
       nets,
       cpu: coreCpu(() => core!),
       parts, // filled below; I2C1 reads it live
+      // RCC's reset reports the reset clock before the board exists: clockHz is it.
+      setCoreClock: (hz) => {
+        if (board) this.#clockChanged(board, hz);
+      },
     });
 
     // Each segment at its load address. Only the file's bytes, not memSize:
@@ -218,16 +241,17 @@ export class Engine {
       parts.set(p.id, mountPart(nets, type, p.id, p.props));
     }
 
-    const partTick = Math.round(chip.clockHz * PART_TICK_SECONDS);
-    this.#board = {
+    board = this.#board = {
       chip,
       elf,
       nets,
       bus,
       core,
       parts,
-      partTick,
-      nextPartTick: partTick,
+      clock: [{ cycle: 0, seconds: 0, hz: chip.clockHz }],
+      end: 0,
+      partTicks: 0,
+      nextPartTick: Math.round(chip.clockHz * PART_TICK_SECONDS),
       circuit,
       changes: [],
     };
@@ -244,10 +268,7 @@ export class Engine {
    */
   runFor(seconds: number): void {
     const b = this.#loaded();
-    const end = b.core.cycles + Math.round(seconds * b.chip.clockHz);
-    this.#break = null;
-    while (b.core.cycles < end && !b.core.lockedUp && !this.#break)
-      this.#advance(b, end);
+    this.#run(b, b.core.cycles + Math.round(seconds * coreHz(b)));
   }
 
   /**
@@ -257,16 +278,24 @@ export class Engine {
    */
   async runRealtime(seconds: number): Promise<void> {
     const b = this.#loaded();
-    const { clockHz } = b.chip;
-    const start = { cycles: b.core.cycles, ms: performance.now() };
-    const end = start.cycles + Math.round(seconds * clockHz);
-    do {
-      const left = (end - b.core.cycles) / clockHz;
-      this.runFor(Math.min(left, REALTIME_SLICE_SECONDS));
-      const simMs = ((b.core.cycles - start.cycles) / clockHz) * 1000;
+    const start = {
+      seconds: secondsAt(b, b.core.cycles),
+      ms: performance.now(),
+    };
+    const end = start.seconds + seconds;
+    this.#break = null;
+    // The end's cycle again before each slice: the clock may have changed.
+    while (
+      b.core.cycles < cycleAt(b, end) &&
+      !b.core.lockedUp &&
+      !this.#break
+    ) {
+      const slice = Math.round(REALTIME_SLICE_SECONDS * coreHz(b));
+      this.#run(b, Math.min(b.core.cycles + slice, cycleAt(b, end)));
+      const simMs = (secondsAt(b, b.core.cycles) - start.seconds) * 1000;
       const ahead = simMs - (performance.now() - start.ms);
       if (ahead > 0) await new Promise((r) => setTimeout(r, ahead));
-    } while (b.core.cycles < end && !b.core.lockedUp && !this.#break);
+    }
   }
 
   /** Executes one instruction. While the core sleeps (WFI), advances to the next part tick instead. */
@@ -288,17 +317,29 @@ export class Engine {
       throw new Error(`invalid time ${seconds}: expected seconds >= 0`);
     const error = propError(propSpec(b.circuit, id, name), value);
     if (error) throw new Error(`${id}.${name}: ${error}`);
-    const at = Math.round(seconds * b.chip.clockHz);
-    const i = b.changes.findIndex((c) => c.at > at);
-    b.changes.splice(i < 0 ? b.changes.length : i, 0, { at, id, name, value });
+    const at = cycleAt(b, seconds);
+    const i = b.changes.findIndex((c) => c.seconds > seconds);
+    b.changes.splice(i < 0 ? b.changes.length : i, 0, {
+      seconds,
+      at,
+      id,
+      name,
+      value,
+    });
     this.#applyChanges(b);
   }
 
+  /** Simulated seconds since reset at `cycle`, e.g. an event's: each cycle at the core clock of its moment. */
+  secondsAt(cycle: number): number {
+    return secondsAt(this.#loaded(), cycle);
+  }
+
   snapshot(): Snapshot {
-    const { chip, elf, nets, bus, core, parts } = this.#loaded();
+    const b = this.#loaded();
+    const { chip, elf, nets, bus, core, parts } = b;
     return {
       cycles: core.cycles,
-      seconds: core.cycles / chip.clockHz,
+      seconds: secondsAt(b, core.cycles),
       pc: core.PC,
       at: where(elf, core.PC),
       halt: core.lockedUp
@@ -362,6 +403,32 @@ export class Engine {
     return this.#board;
   }
 
+  /** Runs until cycle `end` (moved by clock changes), a lockup or a BKPT. */
+  #run(b: Board, end: number): void {
+    b.end = end;
+    this.#break = null;
+    while (b.core.cycles < b.end && !b.core.lockedUp && !this.#break)
+      this.#advance(b, b.end);
+  }
+
+  /**
+   * RCC changed HCLK to `hz` at the current cycle. Deadlines kept in cycles
+   * (the run's end, the next part tick, setPropAt() changes) move so that they
+   * stay at the same simulated time.
+   */
+  #clockChanged(b: Board, hz: number): void {
+    const cycle = b.core.cycles;
+    const last = b.clock[b.clock.length - 1];
+    if (hz === last.hz) return;
+    const point = { cycle, seconds: secondsAt(b, cycle), hz };
+    if (last.cycle === cycle) b.clock[b.clock.length - 1] = point;
+    else b.clock.push(point);
+    if (b.end > cycle)
+      b.end = cycle + Math.round(((b.end - cycle) * hz) / last.hz);
+    b.nextPartTick = cycleAt(b, (b.partTicks + 1) * PART_TICK_SECONDS);
+    for (const c of b.changes) c.at = cycleAt(b, c.seconds);
+  }
+
   /** One instruction, or while asleep the time up to the next part tick or `end`. Then the ticks. */
   #advance(b: Board, end: number): void {
     const { core } = b;
@@ -395,9 +462,11 @@ export class Engine {
       }
     }
     b.bus.tick(cycles);
+    // Every 1 ms of simulated time, on the cycle nearest it.
     while (core.cycles >= b.nextPartTick) {
-      b.nextPartTick += b.partTick;
-      for (const p of b.parts.values()) p.tick?.(b.partTick / b.chip.clockHz);
+      b.partTicks++;
+      b.nextPartTick = cycleAt(b, (b.partTicks + 1) * PART_TICK_SECONDS);
+      for (const p of b.parts.values()) p.tick?.(PART_TICK_SECONDS);
     }
     this.#applyChanges(b);
   }
@@ -409,6 +478,25 @@ export class Engine {
       b.parts.get(id)!.setProp?.(name, value);
     }
   }
+}
+
+/** The core clock now. */
+const coreHz = (b: Board) => b.clock[b.clock.length - 1].hz;
+
+/** Simulated seconds at `cycle`, from the clock timeline. */
+function secondsAt(b: Board, cycle: number): number {
+  let i = b.clock.length - 1;
+  while (i > 0 && b.clock[i].cycle > cycle) i--;
+  const p = b.clock[i];
+  return p.seconds + (cycle - p.cycle) / p.hz;
+}
+
+/** The cycle simulated time reaches `seconds` at (the nearest), if the clock stays as it is now. */
+function cycleAt(b: Board, seconds: number): number {
+  let i = b.clock.length - 1;
+  while (i > 0 && b.clock[i].seconds > seconds) i--;
+  const p = b.clock[i];
+  return p.cycle + Math.round((seconds - p.seconds) * p.hz);
 }
 
 /** The PC as "file:line", else "function+0xoffset", else the bare address. */
