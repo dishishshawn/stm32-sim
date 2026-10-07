@@ -1,4 +1,5 @@
 // The Part interface: one file per part, registered in ./index.ts.
+import type { I2cTarget } from "../engine/i2c.ts";
 import type { Drive, Level, Nets } from "../engine/nets.ts";
 
 export type PropValue = number | string | boolean;
@@ -38,6 +39,8 @@ export interface PartContext {
 export interface PartInstance {
   /** A pin's level changed. Levels already present during create() aren't reported: read them with ctx.level(). */
   onLevel?(pin: string, level: Level): void;
+  /** Set if the part is an I2C target. See src/engine/i2c.ts. */
+  i2c?: I2cTarget;
   /** Simulated time passed since the last tick, in seconds. */
   tick?(seconds: number): void;
   /** A prop changed at run time (button pressed, slider moved). The caller has already checked it with propError(). */

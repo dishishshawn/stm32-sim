@@ -44,6 +44,8 @@ export class Nets {
   #resistors: [string, string][] = [];
   #drives = new Map<string, Drive>();
   #levels = new Map<string, Level>();
+  /** Each endpoint's net, named by one endpoint on it. */
+  #netOf = new Map<string, string>();
   #listeners: Listener[] = [];
   #settling = false;
   #dirty = false;
@@ -56,6 +58,11 @@ export class Nets {
   /** The level of an endpoint's net. An endpoint never mentioned is "floating". */
   level(endpoint: string): Level {
     return this.#levels.get(endpoint) ?? "floating";
+  }
+
+  /** Whether a wire or a closed switch joins the two endpoints. A resistor does not. */
+  sameNet(a: string, b: string): boolean {
+    return (this.#netOf.get(a) ?? a) === (this.#netOf.get(b) ?? b);
   }
 
   drive(endpoint: string, drive: Drive): void {
@@ -166,6 +173,7 @@ export class Nets {
       const level = resolveNet(drives.get(root(e)));
       if (level !== this.level(e)) changed.push([e, level]);
       this.#levels.set(e, level);
+      this.#netOf.set(e, root(e));
     }
     return changed;
   }
