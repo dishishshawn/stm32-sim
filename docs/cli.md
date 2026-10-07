@@ -139,6 +139,13 @@ sim ui: serving http://127.0.0.1:8031/ (Ctrl-C to stop)
 - `--open`: also open the URL in the default browser.
 - It is local and offline: it listens on 127.0.0.1 only, and the page loads
   nothing from anywhere else.
+- Parts are added from the palette (click, or drag onto the canvas), moved
+  by dragging or with the arrow keys, and removed with Delete. Adding or
+  removing one restarts the simulation. "Save circuit" writes the circuit to
+  the `--circuit` file, in its canonical form (`serializeCircuit`: fixed key
+  order, one wire per line), with `pos` only for parts that were placed;
+  an unchanged file stays byte-identical. Without `--circuit`
+  there is nowhere to save.
 
 ## Exit codes
 

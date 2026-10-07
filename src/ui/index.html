@@ -109,6 +109,29 @@
         position: relative;
         zoom: 1.5;
       }
+      /* The palette and Save. */
+      .edit {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      #palette {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        align-items: center;
+      }
+      #save {
+        margin-left: auto;
+      }
+      /* A part moves by dragging it. */
+      figure[tabindex] {
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+      }
       figure {
         position: absolute;
         margin: 0;
@@ -171,11 +194,26 @@
       <h1>stm32-sim</h1>
       <p><span id="run" role="status">loading</span></p>
       <p><span id="time">0.000</span> s simulated</p>
+      <!-- What the last edit or save did, e.g. "added led1: simulation restarted". -->
+      <p><span id="edit" role="status"></span></p>
       <div id="toolbar" role="toolbar" aria-label="Run controls"></div>
     </header>
     <div class="layout">
       <main>
-        <section id="circuit" aria-label="Circuit"></section>
+        <div class="edit">
+          <div id="palette" role="group" aria-labelledby="palette-label">
+            <span id="palette-label">Add a part:</span>
+          </div>
+          <button id="save" type="button">Save circuit</button>
+        </div>
+        <section id="circuit" aria-label="Circuit" tabindex="-1"></section>
+        <dialog id="confirm" aria-label="Remove a part">
+          <form method="dialog">
+            <p></p>
+            <button value="remove">Remove</button>
+            <button value="" autofocus>Cancel</button>
+          </form>
+        </dialog>
       </main>
       <!-- Panels from src/ui/panels.ts each add a section here. -->
       <aside id="panels" aria-label="Panels"></aside>
