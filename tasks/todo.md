@@ -185,7 +185,7 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
 
 **Contract gate:** review before T8, T12 or T14 start.
 
-- [ ] `src/engine/memory-bus.ts` implements `Bus`:
+- [x] `src/engine/memory-bus.ts` implements `Bus`:
   - flash is read-only (follow RM0444 for direct writes; record the source);
   - SRAM is 8 KB;
   - registers are dispatched by address;
@@ -196,11 +196,11 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
   - byte and halfword accesses use the correct lanes;
   - clock gating is enforced here, from each peripheral's declared gate: writes are
     ignored and the event is flagged.
-- [ ] `src/peripherals/peripheral.ts` holds the interface: name, its registers from the
+- [x] `src/peripherals/peripheral.ts` holds the interface: name, its registers from the
       JSON, read/write hooks, clock gate, reset. `src/chips/stm32g031k8.ts` holds
       the core type, memory map, 16 MHz, 32 IRQs, and the peripheral registration
       list.
-- [ ] `src/engine/events.ts` is the single event log: register access events
+- [x] `src/engine/events.ts` is the single event log: register access events
       `{t, pc, periph, reg, old, new, flags}` and bus events, with subscribers.
       Tests cover:
   - a write with the clock gated off changes nothing and is flagged;
@@ -214,6 +214,10 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
 
 ### T8: RCC and GPIOA/GPIOB
 
+- [ ] Extend the T7 `Peripheral` contract, as the T7 review agreed: `nets` and
+      `regsOf(name)` (a read-only view of another peripheral's registers; I2C1 needs
+      GPIOB's MODER/AFR) on `PeripheralContext`, passed through the `MemoryBus`
+      options. Add the G031K8 pin list to the chip definition, for circuit validation.
 - [ ] `src/peripherals/rcc.ts`: IOPENR and APBENR1. These are the bits the bus reads
       for gating.
 - [ ] `src/peripherals/gpio.ts`: MODER, OTYPER, PUPDR, IDR, ODR, BSRR, AFRL and AFRH.
@@ -235,6 +239,9 @@ definition list. **Size:** M.
 
 ### T9: Engine run loop and blink end-to-end test
 
+- [ ] Extend the T7 `Peripheral` contract, as the T7 review agreed: `tick?(cycles)` on
+      `PeripheralInstance`; `now()` (cycles) and `cpu.setPending(exception)` on
+      `PeripheralContext`. The engine wires them through the `MemoryBus` options.
 - [ ] `src/engine/engine.ts`:
   - `load(elf, circuit)`, then reset: SP and PC from the vector table. Build a fresh
     core on each load: upstream `reset()` doesn't clear lockup, IPSR or the mode
@@ -289,6 +296,8 @@ and T14. **Files:** `src/cli/sim.ts`, `src/cli/sim.test.ts`, `docs/cli.md`,
 - [x] A fault inside HardFault locks up and halts the engine. Choose how BKPT behaves
       (ARMv6-M with no debugger attached escalates it to HardFault) and record the
       choice. BKPT halts as if a debugger were attached; recorded in `decisions.md` §2.
+- [ ] Follow-up, not needed for the MVP: an unaligned SRAM or flash access should HardFault
+      (ARMv6-M has no unaligned access; T7 faults only unaligned register accesses).
 - [ ] Follow-up, not needed for the MVP: a BX/BLX to an address with bit 0 clear
       (INVSTATE), and an SVC that can't be taken, should both enter HardFault. T11
       left them out.

@@ -263,6 +263,12 @@ principles.
   supported. One gap: parts have no way to expose what they show (LED lit, 7-segment
   `values`). It is an optional, non-breaking addition, assigned to T19.
 - **After T7:** the `Peripheral` API and clock gating, before T8, T12 and T14.
+  **Passed 2026-10-07, with additions.** `Peripheral` mirrors `Part`: a descriptor whose
+  `create(ctx)` returns hooks. Clock gating is enforced once, in the bus, and the event
+  log costs nothing without subscribers. Gap: the context only offers the peripheral's
+  own registers. T8 adds `nets`, `regsOf` and the pin list; T9 adds `tick`, `now` and
+  `cpu.setPending`. Done sequentially, so parallel tasks don't collide. RM0444 wasn't
+  available to T7, so its RM0444 points are "assumed" (decisions.md §8).
 - **After T13:** the I2C target interface, before T15 and T18.
   **Passed 2026-10-07.** Targets get START and STOP, and treat the first write as the
   register pointer; the address can change at run time; a read with nothing selected
