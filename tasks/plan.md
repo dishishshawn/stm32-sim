@@ -259,6 +259,9 @@ principles.
 
 - **After T5:** the `Net` and `Part` API, before T13, T16, T18, T19 and T29 start.
   Check that it isn't boolean-only, and that switches and weak links are supported.
+  **Passed 2026-10-07.** Levels are a string union; switches, resistor links and rails are
+  supported. One gap: parts have no way to expose what they show (LED lit, 7-segment
+  `values`). It is an optional, non-breaking addition, assigned to T19.
 - **After T7:** the `Peripheral` API and clock gating, before T8, T12 and T14.
 - **After T13:** the I2C target interface, before T15 and T18.
 

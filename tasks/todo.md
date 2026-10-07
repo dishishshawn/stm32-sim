@@ -138,7 +138,7 @@ with T2, T3 and T5. **Files:** `vendor/svd/*`, `tools/svd2json.ts`,
 This is the shared contract for every part. **Contract gate:** review it before T13,
 T16, T18, T19 or T29 start.
 
-- [ ] `src/engine/nets.ts` resolves each net to `high`, `low`, `floating` or
+- [x] `src/engine/nets.ts` resolves each net to `high`, `low`, `floating` or
       `conflict`. Drivers are:
   - strong: push-pull high/low, open-drain low;
   - weak: pull-up/pull-down, and resistor links (they carry strong levels only, with
@@ -152,10 +152,10 @@ T16, T18, T19 or T29 start.
   - conflict for push-pull high against push-pull low;
   - a switch closing and opening.
 
-- [ ] `src/parts/part.ts` (the `Part` interface: pins, typed props, net callbacks,
+- [x] `src/parts/part.ts` (the `Part` interface: pins, typed props, net callbacks,
       tick) and `src/parts/index.ts` (the registration list, empty for now). MCU pins
       are endpoints named `mcu.PA0`.
-- [ ] `src/engine/circuit.ts` loads and saves circuit JSON:
+- [x] `src/engine/circuit.ts` loads and saves circuit JSON:
   - `{ chip, parts: [{ id, type, props, pos? }], wires: [["a.pin", "b.pin"], …] }`;
   - load followed by save is byte-identical;
   - an unknown part type, pin or prop is an error that names the bad field. This is
@@ -445,6 +445,7 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
 ### T19: LED and 7-segment parts
 
+- [ ] Add an optional `state?(): Readonly<Record<string, unknown>>` to `PartInstance` in `src/parts/part.ts`: what the part shows, for tests, `sim inspect` and the UI. This was the one gap the T5 contract review found.
 - [ ] An LED is lit when its anode net is high and its cathode net is low.
 - [ ] The 7-segment display has two variants, common-anode and common-cathode. It has
       pins A–G, DP and COM, and exposes `values[8]` in `@wokwi/elements` order
