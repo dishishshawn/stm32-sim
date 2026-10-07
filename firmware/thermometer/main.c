@@ -27,7 +27,52 @@
  *   0..9 as " 5" (no leading zero), 10..99 as "42", anything else "--"
  *   (below 0, or above 99: 38 °C and up reads over 99 in °F).
  */
-#include "stm32g0xx.h"
+#include <stdint.h>
+
+/* Registers, the same ones as tc74-read's, each defined by its address: the
+   peripheral's base address from RM0444's memory map (§2.2.2, Table 6), plus
+   the register's offset from its own section.
+     RCC    0x4002 1000  IOPENR  + 0x34 (§5.4.13), APBENR1 + 0x3C (§5.4.15)
+     GPIOB  0x5000 0400  MODER   + 0x00 (§7.5.1),  OTYPER  + 0x04 (§7.5.2),
+                         AFRL    + 0x20 (§7.5.9)
+     I2C1   0x4000 5400  CR1     + 0x00 (§32.9.1), CR2     + 0x04 (§32.9.2),
+                         TIMINGR + 0x10 (§32.9.5), ISR     + 0x18 (§32.9.7),
+                         ICR     + 0x1C (§32.9.8), RXDR    + 0x24 (§32.9.10),
+                         TXDR    + 0x28 (§32.9.11)
+   SysTick is in the Cortex-M0+ core, not in RM0444: see blink-systick-poll. */
+#define RCC_IOPENR (*(volatile uint32_t *)0x40021034U)
+#define RCC_APBENR1 (*(volatile uint32_t *)0x4002103CU)
+#define GPIOB_MODER (*(volatile uint32_t *)0x50000400U)
+#define GPIOB_OTYPER (*(volatile uint32_t *)0x50000404U)
+#define GPIOB_AFRL (*(volatile uint32_t *)0x50000420U)
+#define I2C1_CR1 (*(volatile uint32_t *)0x40005400U)
+#define I2C1_CR2 (*(volatile uint32_t *)0x40005404U)
+#define I2C1_TIMINGR (*(volatile uint32_t *)0x40005410U)
+#define I2C1_ISR (*(volatile uint32_t *)0x40005418U)
+#define I2C1_ICR (*(volatile uint32_t *)0x4000541CU)
+#define I2C1_RXDR (*(volatile uint32_t *)0x40005424U)
+#define I2C1_TXDR (*(volatile uint32_t *)0x40005428U)
+#define SysTick_CTRL (*(volatile uint32_t *)0xE000E010U)
+#define SysTick_LOAD (*(volatile uint32_t *)0xE000E014U)
+#define SysTick_VAL (*(volatile uint32_t *)0xE000E018U)
+
+/* The bits used, from each register's section in RM0444. */
+#define RCC_IOPENR_GPIOBEN (1U << 1)
+#define RCC_APBENR1_I2C1EN (1U << 21)
+#define I2C_CR1_PE (1U << 0)       /* peripheral enable */
+#define I2C_CR2_RD_WRN (1U << 10)  /* 1: read, 0: write */
+#define I2C_CR2_START (1U << 13)   /* send START (or a repeated START) */
+#define I2C_CR2_AUTOEND (1U << 25) /* send STOP after NBYTES by itself */
+#define I2C_ISR_TXIS (1U << 1)
+#define I2C_ISR_RXNE (1U << 2)
+#define I2C_ISR_NACKF (1U << 4)
+#define I2C_ISR_STOPF (1U << 5)
+#define I2C_ISR_TC (1U << 6)
+#define I2C_ICR_NACKCF (1U << 4)
+#define I2C_ICR_STOPCF (1U << 5)
+#define SysTick_CTRL_ENABLE (1U << 0)
+#define SysTick_CTRL_TICKINT (1U << 1)
+#define SysTick_CTRL_CLKSOURCE (1U << 2)
 
 #define CPU_HZ 16000000U
 #define MS_PER_READ 250U /* the TC74 converts 8 times a second, at best */
@@ -59,21 +104,23 @@ void SysTick_Handler(void) { ms++; }
 
 /* ----- I2C1: the helpers from firmware/tc74-read, for any target -------- */
 
-/* CR2's SADD field holds a 7-bit address in bits 7:1 (RM0444 §32.9.2). */
-#define CR2_ADDR(a) (((uint32_t)(a) << 1) << I2C_CR2_SADD_Pos)
-#define CR2_BYTES(n) ((uint32_t)(n) << I2C_CR2_NBYTES_Pos)
+/* CR2's address field, SADD (bits 9:0), holds a 7-bit address in bits 7:1,
+   so the address goes in shifted up by one; NBYTES is bits 23:16 (RM0444
+   §32.9.2). */
+#define CR2_ADDR(a) ((uint32_t)(a) << 1)
+#define CR2_BYTES(n) ((uint32_t)(n) << 16)
 
-/* Waits for `flag` in I2C1->ISR and returns 0. If the target NACKs instead,
+/* Waits for `flag` in I2C1_ISR and returns 0. If the target NACKs instead,
    the I2C sends a STOP by itself (§32.4.9): wait for it, clear NACKF and
    STOPF so the next transfer starts clean, and return -1. NACKF is checked
    first, so a NACK of the last byte (which still ends in STOPF) is seen. */
 static int wait_for(uint32_t flag) {
   for (;;) {
-    uint32_t isr = I2C1->ISR;
+    uint32_t isr = I2C1_ISR;
     if (isr & I2C_ISR_NACKF) {
-      while (!(I2C1->ISR & I2C_ISR_STOPF)) {
+      while (!(I2C1_ISR & I2C_ISR_STOPF)) {
       }
-      I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+      I2C1_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
       return -1;
     }
     if (isr & flag)
@@ -86,15 +133,15 @@ static int wait_for(uint32_t flag) {
    With AUTOEND = 1 the I2C sends STOP by itself after the last byte.
    Returns 0, or -1 on a NACK. */
 static int i2c_write(uint8_t addr, const uint8_t *data, uint32_t n) {
-  I2C1->CR2 = CR2_ADDR(addr) | CR2_BYTES(n) | I2C_CR2_AUTOEND | I2C_CR2_START;
+  I2C1_CR2 = CR2_ADDR(addr) | CR2_BYTES(n) | I2C_CR2_AUTOEND | I2C_CR2_START;
   for (uint32_t i = 0; i < n; i++) {
     if (wait_for(I2C_ISR_TXIS))
       return -1;
-    I2C1->TXDR = data[i];
+    I2C1_TXDR = data[i];
   }
   if (wait_for(I2C_ISR_STOPF))
     return -1;
-  I2C1->ICR = I2C_ICR_STOPCF;
+  I2C1_ICR = I2C_ICR_STOPCF;
   return 0;
 }
 
@@ -103,20 +150,20 @@ static int i2c_write(uint8_t addr, const uint8_t *data, uint32_t n) {
      S addr+W A reg A  Sr addr+R A <value> NA P
    Returns 0, or -1 on a NACK. */
 static int i2c_read_reg(uint8_t addr, uint8_t reg, uint8_t *value) {
-  I2C1->CR2 = CR2_ADDR(addr) | CR2_BYTES(1) | I2C_CR2_START; /* AUTOEND = 0 */
+  I2C1_CR2 = CR2_ADDR(addr) | CR2_BYTES(1) | I2C_CR2_START; /* AUTOEND = 0 */
   if (wait_for(I2C_ISR_TXIS))
     return -1;
-  I2C1->TXDR = reg;
+  I2C1_TXDR = reg;
   if (wait_for(I2C_ISR_TC))
     return -1;
-  I2C1->CR2 = CR2_ADDR(addr) | I2C_CR2_RD_WRN | CR2_BYTES(1) | I2C_CR2_AUTOEND |
-              I2C_CR2_START;
+  I2C1_CR2 = CR2_ADDR(addr) | I2C_CR2_RD_WRN | CR2_BYTES(1) | I2C_CR2_AUTOEND |
+             I2C_CR2_START;
   if (wait_for(I2C_ISR_RXNE))
     return -1;
-  *value = (uint8_t)I2C1->RXDR; /* reading RXDR clears RXNE */
+  *value = (uint8_t)I2C1_RXDR; /* reading RXDR clears RXNE */
   if (wait_for(I2C_ISR_STOPF))
     return -1;
-  I2C1->ICR = I2C_ICR_STOPCF;
+  I2C1_ICR = I2C_ICR_STOPCF;
   return 0;
 }
 
@@ -175,21 +222,20 @@ static void redraw(void) {
 int main(void) {
   /* 1. I2C1 on PB6/PB7 at 100 kHz, exactly as in tc74-read (see its steps
         1 to 4 for each value): clocks, pins to AF6 open drain, timing, PE. */
-  RCC->IOPENR |= RCC_IOPENR_GPIOBEN;
-  RCC->APBENR1 |= RCC_APBENR1_I2C1EN;
-  (void)RCC->APBENR1;
-  GPIOB->OTYPER |= GPIO_OTYPER_OT6 | GPIO_OTYPER_OT7;
-  GPIOB->AFR[0] =
-      (GPIOB->AFR[0] & ~(GPIO_AFRL_AFSEL6_Msk | GPIO_AFRL_AFSEL7_Msk)) |
-      (6U << GPIO_AFRL_AFSEL6_Pos) | (6U << GPIO_AFRL_AFSEL7_Pos);
-  GPIOB->MODER =
-      (GPIOB->MODER & ~(GPIO_MODER_MODE6_Msk | GPIO_MODER_MODE7_Msk)) |
-      GPIO_MODER_MODE6_1 | GPIO_MODER_MODE7_1;
-  I2C1->TIMINGR =
-      (0x3U << I2C_TIMINGR_PRESC_Pos) | (0x4U << I2C_TIMINGR_SCLDEL_Pos) |
-      (0x2U << I2C_TIMINGR_SDADEL_Pos) | (0x0FU << I2C_TIMINGR_SCLH_Pos) |
-      (0x13U << I2C_TIMINGR_SCLL_Pos);
-  I2C1->CR1 |= I2C_CR1_PE;
+  RCC_IOPENR |= RCC_IOPENR_GPIOBEN;
+  RCC_APBENR1 |= RCC_APBENR1_I2C1EN;
+  (void)RCC_APBENR1;
+  GPIOB_OTYPER |= (1U << 6) | (1U << 7); /* OT6 = OT7 = 1 */
+  GPIOB_AFRL = (GPIOB_AFRL & ~((0xFU << 24) | (0xFU << 28))) | // clear
+               (6U << 24) | (6U << 28);                        // set
+  GPIOB_MODER = (GPIOB_MODER & ~((3U << 12) | (3U << 14))) |   // clear
+                (2U << 12) | (2U << 14);                       // set
+  I2C1_TIMINGR = (0x3U << 28) | // PRESC,  bits 31:28
+                 (0x4U << 20) | // SCLDEL, bits 23:20
+                 (0x2U << 16) | // SDADEL, bits 19:16
+                 (0x0FU << 8) | // SCLH,   bits 15:8
+                 (0x13U << 0);  // SCLL,   bits 7:0
+  I2C1_CR1 |= I2C_CR1_PE;
 
   /* 2. The MCP23017. After power-on every pin is an input (IODIR = 0xFF)
         and every latch is 0, so the digits are dark until the first redraw.
@@ -202,10 +248,10 @@ int main(void) {
   i2c_write(MCP_ADDR, gppu, sizeof gppu);
 
   /* 3. A 1 ms SysTick interrupt, as in blink-systick-irq. */
-  SysTick->LOAD = CPU_HZ / 1000U - 1U;
-  SysTick->VAL = 0U;
-  SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk |
-                  SysTick_CTRL_ENABLE_Msk;
+  SysTick_LOAD = CPU_HZ / 1000U - 1U;
+  SysTick_VAL = 0U;
+  SysTick_CTRL =
+      SysTick_CTRL_CLKSOURCE | SysTick_CTRL_TICKINT | SysTick_CTRL_ENABLE;
 
   /* Debouncing. A button's contacts bounce for a few ms when pressed or
      released, reading 0 1 0 1 0... before they settle. Looking only every
