@@ -732,16 +732,16 @@ on `while (!(RCC_CR & (1U << 25)))`, because the PLL never locked.
 
 ### T42: Clock diagnostics, and clocks in `inspect`
 
-- [ ] Rules:
+- [x] Rules:
   - `flash-latency`: SYSCLK over 24 MHz with FLASH_ACR.LATENCY too low (RM0444 §3);
-  - `pll-out-of-range`: VCO or PLLR output outside the datasheet limits;
+  - `pll-out-of-range`: VCO or PLLR output outside the datasheet limits (VCO is 96–344 MHz per DS12992 Table 43 and RM0444 §5.4.4, not the 64 this card first said);
   - `clock-switch-not-ready`: SW set to a source that isn't ready, so SWS doesn't
     follow;
   - `pll-config-while-on`: PLLCFGR written while PLLON = 1 (RM0444 says configure it
     with the PLL off).
 
   Each names registers the T41 way and suggests the fix.
-- [ ] `sim inspect` prints `clocks` (SYSCLK source, SYSCLK, HCLK, PCLK); `--json`
+- [x] `sim inspect` prints `clocks` (SYSCLK source, SYSCLK, HCLK, PCLK); `--json`
   adds them (an additive field).
 
 **Verify:** `just test`. **Blocked by:** T39, T41. **Size:** M.
