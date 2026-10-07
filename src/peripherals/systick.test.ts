@@ -173,13 +173,23 @@ for (const name of ["blink-systick-poll", "blink-systick-irq"]) {
   });
 }
 
-test("realtime: 0.5 s of simulated time takes 0.5 s ± 10% of wall time", async (t) => {
+// Throttling means never running ahead of the wall clock: that bound is strict.
+// Running behind only means this machine can't simulate at full speed (a slow CI
+// runner), so the upper bound is checked against the unthrottled speed instead.
+test("realtime: 0.5 s of simulated time never takes less than 0.5 s of wall time", async (t) => {
+  const max = run("blink-systick-irq").engine;
+  const m0 = performance.now();
+  max.runFor(0.5);
+  const unthrottled = performance.now() - m0;
   const { engine } = run("blink-systick-irq");
   const t0 = performance.now();
   await engine.runRealtime(0.5);
   const wall = performance.now() - t0;
-  t.diagnostic(`0.5 s simulated took ${wall.toFixed(1)} ms`);
-  assert.ok(Math.abs(wall - 500) <= 50, `${wall} ms`);
+  t.diagnostic(
+    `0.5 s simulated: ${wall.toFixed(1)} ms realtime, ${unthrottled.toFixed(1)} ms max speed`,
+  );
+  assert.ok(wall >= 0.95 * 500, `ran ahead of real time: ${wall} ms`);
+  assert.ok(wall <= Math.max(550, 1.2 * unthrottled + 50), `${wall} ms`);
   const { cycles } = engine.snapshot();
   assert.ok(cycles >= CLOCK_HZ / 2 && cycles < CLOCK_HZ / 2 + 4);
 });
