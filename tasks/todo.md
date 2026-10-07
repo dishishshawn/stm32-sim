@@ -208,6 +208,9 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
   - an unmapped address throws `BusFault`;
   - byte lanes.
 
+- [ ] Follow-up (RM0444 check): a direct flash write sets FLASH_SR.PGSERR (§3); and the
+      2-cycle delay after a clock-enable bit is set, during which register accesses have
+      no effect (§5.2.17). Neither is modelled yet.
 **Verify:** `node --test 'src/engine/**/*.test.ts' 'src/peripherals/**/*.test.ts'`. **Blocked by:** T2, T4.
 **Wave 2.** **Files:** `memory-bus.ts`, `events.ts`, `peripheral.ts`,
 `src/chips/stm32g031k8.ts`, plus tests. **Size:** M.

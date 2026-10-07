@@ -572,6 +572,23 @@ driven (`mcu.PB12` stays unconnected).
 - Speed: blink runs at about 4.2 simulated seconds per wall-clock second (Node 24,
   this laptop).
 
+## Checked against RM0444 Rev 6 (2026-10-07)
+
+The reference manuals are now local, in `docs/reference/` (gitignored: ST's
+copyright). These are the "assumed" points from §8 and §9 that RM0444 settles.
+
+- **Clock off** (§5.2.17): "the read and write accesses to its registers are not
+  effective." Writes are ignored, **confirmed**. Reads returning 0 is our reading of
+  "not effective" and stays assumed.
+- **Clock enable delay** (§5.2.17): the clock starts 2 cycles after the enable bit is
+  set, and an access in that window has no effect. **Not modelled**; a follow-up on T7.
+- **Direct flash write** (§3, FLASH_SR bit 7 PGSERR): a write without PG/FSTPG sets
+  PGSERR. There is no bus fault, **confirmed**. Setting PGSERR is a follow-up on T7.
+- **Peripheral blocks** (memory-map table): 1 KB each for GPIOA, GPIOB, RCC and I2C1,
+  **confirmed**.
+- **RCC_CR** (§5.4.1): power-on reset value `0x0000 0500`, **confirmed**. The SVD's
+  `0x63` is wrong; `rcc.ts` overrides it.
+
 ## Open, deferred to the build step that needs them
 
 - **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
