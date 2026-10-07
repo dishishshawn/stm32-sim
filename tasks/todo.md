@@ -267,15 +267,15 @@ T8, and T0 to run locally. **Wave 4.** **Files:** `engine.ts`, `engine.test.ts`,
 
 ### T10: CLI: `sim run`, `sim inspect`, `--json`, exit codes
 
-- [ ] `src/cli/sim.ts` (plus a `sim *args` recipe in the `justfile`), built on `node:util` `parseArgs`:
+- [x] `src/cli/sim.ts` (plus a `sim *args` recipe in the `justfile`), built on `node:util` `parseArgs`:
   - `sim run <elf> --circuit <json> --for <dur>`;
   - `sim inspect <elf> --circuit <json> --at <dur>`, which prints pins, registers with
     named bits, the PC as file:line, the I2C trace (empty until T14), diagnostics
     (empty until T24), and unsimulated-register accesses;
   - every command takes `--json`, whose output carries `"version": 1`.
-- [ ] Route the core's logger (HardFault and lockup messages, which T9 still prints to
+- [x] Route the core's logger (HardFault and lockup messages, which T9 still prints to
       the console) into the run result: the text output and `--json`, not stray stderr.
-- [ ] Exit codes:
+- [x] Exit codes:
 
   | Code | Meaning                  |
   | ---- | ------------------------ |
@@ -286,7 +286,7 @@ T8, and T0 to run locally. **Wave 4.** **Files:** `engine.ts`, `engine.test.ts`,
 
   `docs/cli.md` documents the commands, the JSON shapes and these codes.
 
-- [ ] The tests spawn the CLI on blink and assert the JSON shape and exit codes. A bad
+- [x] The tests spawn the CLI on blink and assert the JSON shape and exit codes. A bad
       circuit gives exit 2 with a message naming the field.
 
 **Verify:** `node --test 'src/cli/**/*.test.ts'`. **Blocked by:** T9. **Wave 5**, parallel with T12

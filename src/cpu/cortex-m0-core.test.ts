@@ -1719,7 +1719,8 @@ describe("Cortex-M0+ faults", () => {
     const warn = mock.fn();
     core.logger = { warn, info: () => {} };
     core.VTOR = 0x20040000;
-    bus.writeUint32(core.VTOR + EXC_HARDFAULT * 4, HARDFAULT_HANDLER);
+    // Bit 0 set, as in a real vector table: entry must still branch to an even address.
+    bus.writeUint32(core.VTOR + EXC_HARDFAULT * 4, HARDFAULT_HANDLER | 1);
     core.SP = STACK_TOP;
     core.PC = FAULT_PC;
     return { bus, core, warn };

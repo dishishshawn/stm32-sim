@@ -353,7 +353,9 @@ export class CortexM0Core {
     this.switchStack(StackPointerBank.SPmain);
     this.eventRegistered = true;
     const vectorTable = this.VTOR;
-    this.PC = this.readUint32(vectorTable + 4 * exceptionNumber);
+    // ARMv6-M ExceptionTaken: BranchTo(vector AND 0xFFFFFFFE). Upstream kept bit 0,
+    // so the PC read odd until the handler's first instruction ran.
+    this.PC = this.readUint32(vectorTable + 4 * exceptionNumber) & 0xfffffffe;
   }
 
   exceptionReturn(excReturn: number) {

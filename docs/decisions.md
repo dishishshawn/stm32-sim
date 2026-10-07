@@ -147,6 +147,12 @@ apply upstream fixes by hand.
   HardFault, but the simulator plays the debugger (`sim inspect`, stepping), and a
   learner who writes `__BKPT()` wants to stop there. UDF is not a break: it HardFaults.
 
+**Fixed after T10:** exception entry kept bit 0 of the vector in the PC, as upstream
+rp2040js does. Fetch masks it, so handlers ran, but the PC read odd until the
+handler's first instruction. That is the state `sim` reports after a HardFault.
+Entry now branches to `vector & ~1`, per ARMv6-M ExceptionTaken. The fault tests
+now use realistic vectors, with bit 0 set.
+
 ### Later (Cortex-M3/M4/M7): decide when the second chip is added
 
 The CPU sits behind the same bus interface, so a v7-M core can be swapped in per chip
