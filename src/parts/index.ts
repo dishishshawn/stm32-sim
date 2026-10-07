@@ -6,6 +6,7 @@ import { pushbutton } from "./pushbutton.ts";
 import { resistor } from "./resistor.ts";
 import { sevenSegment } from "./seven-segment.ts";
 import { tc74 } from "./tc74.ts";
+import { tmp102 } from "./tmp102.ts";
 
 export const parts: readonly Part[] = [
   resistor,
@@ -14,4 +15,5 @@ export const parts: readonly Part[] = [
   sevenSegment,
   tc74,
   mcp23017,
+  tmp102,
 ];
