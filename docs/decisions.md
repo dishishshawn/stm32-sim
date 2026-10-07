@@ -16,6 +16,8 @@ so. Revisit a decision only with new evidence, and update this file when you do.
 | Register data    | Patched SVD from stm32-rs, converted once to checked-in JSON: names, addresses, reset values, bitfields                    |
 | ELF + PC→line    | `@gba-kit/debug-info` (MIT, no dependencies, DWARF 2–5). Checked in T6 on a GCC 14 DWARF 5 ELF: works                      |
 | Test firmware    | Built from source with `arm-none-eabi-gcc`. CI installs it. ELFs are not committed                                         |
+| Browser UI       | `sim ui` serves `src/` with types stripped (no bundler), the wokwi bundle, one import-map entry. Engine in the page (§15)  |
+| UI tests         | `playwright-core` (Apache-2.0, dev only) and Chrome Headless Shell, from `node:test`. CI caches the browser (§15)          |
 
 ## 1. Stack: TypeScript on Node ≥ 24
 
@@ -50,7 +52,7 @@ so. Revisit a decision only with new evidence, and update this file when you do.
   `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. So the npm package, if we publish
   one, needs a `tsc` emit step. Running from a clone does not.
 - The browser UI will need a bundler or an import map to resolve Lit and
-  `@wokwi/elements`. That choice is deferred to build step 7.
+  `@wokwi/elements`. T30 chose neither for Lit: see §15.
 
 **Rejected.**
 
@@ -876,6 +878,144 @@ and blinks with the same loop. Its test checks the period ratio (4), 1 ms
 SysTick interrupts, part ticks, `setPropAt` and real-time mode across the
 switch, and that every `#define` matches the register JSON.
 
+## 15. Browser UI shell and `sim ui` (T30)
+
+`src/ui/server.ts` (Node), `src/ui/index.html` and `src/ui/main.ts` (browser),
+`src/ui/ui.test.ts`. Measured 2026-10-07 on this laptop (8 cores), Node 24.20.0,
+Chrome Headless Shell 153.
+
+**Serving.** `sim ui` checks its input as `run` does (exit 2), then serves with
+`node:http` on `127.0.0.1` only, default port 8031 (`--port 0` picks a free
+one). Routes: `/` the page; `/elf` and `/circuit`, read from disk on every
+request, so a reload picks up a rebuilt ELF; `/src/**.ts` and `/src/**.json`;
+`/debug-info/*.js`; `/wokwi-elements.js`. Anything else is 404, and a path that
+resolves outside its directory too.
+
+- A request whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` gets
+  403, so a site that rebinds its DNS name to 127.0.0.1 can't read the files.
+- Every response has `Content-Security-Policy: default-src 'self'
+'unsafe-inline'`: the page can't fetch anything from another origin, which
+  makes "offline" something the browser enforces. `unsafe-inline` is for the
+  import map and the page's `<style>`. And `Cache-Control: no-store`.
+
+**TS in the browser: no bundler.** Option (a) of the T30 card.
+
+- The server strips types on request with Node's `module.stripTypeScriptTypes`
+  and serves the result as JavaScript. Imports keep their `.ts` extension; the
+  browser doesn't care about extensions, only the MIME type. Strip mode
+  replaces types with spaces, so line and column numbers match the source and
+  no source map is needed.
+- It exists in Node 24 and warns once per process (`ExperimentalWarning:
+stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
+  at import with `process.emitWarning` stubbed, so Node records the warning as
+  given and `sim ui` prints nothing.
+- Cost: 36 files of engine, parts and UI strip in 36 ms on the first pass
+  (20 ms after). The page loads in about 180 ms with 60 requests.
+- The registers JSON loads as a JSON module (`import … with { type: "json" }`),
+  natively.
+- Import map: one entry, `@gba-kit/debug-info` → `/debug-info/index.js`. Its
+  `dist/` is ESM with `.js` extensions and no Node imports.
+- `@wokwi/elements` 1.9.2 is loaded as its IIFE bundle
+  (`dist/wokwi-elements.bundle.js`, 554 KB, Lit included) in a classic
+  `<script>`. Its ESM build can't load without a bundler: it imports
+  extensionless paths (`./utils/keys`). The bundle defines every element, and
+  our code doesn't import Lit: the page is plain DOM.
+- Licenses: `@wokwi/elements` MIT; Lit 3 (`lit`, `lit-html`, `lit-element`,
+  `@lit/reactive-element`, `@lit-labs/ssr-dom-shim`) BSD-3-Clause; its
+  `@types/react` and `csstype` dependencies MIT.
+- **Rejected: esbuild (b).** It works, but it is a native binary and a
+  runtime dependency of `sim ui`, for what 4 lines of stripping already do.
+  Revisit if the UI needs a feature that isn't erasable TS, or a library whose
+  ESM build needs a bundler.
+- A later task that wants Lit for its own components adds `lit`, `lit/`,
+  `lit-html`, `lit-html/`, `lit-element/`, `@lit/reactive-element` and
+  `@lit/reactive-element/` to the import map: Lit's own ESM has extensions. It
+  would be a second copy of Lit next to the bundle's, which is harmless.
+
+**The engine runs in the page**, driven by `requestAnimationFrame` in
+`frame()` in `main.ts`.
+
+- Each frame runs the wall time since the last one, in 1 ms `runFor` slices,
+  until done or until it has spent 12 ms. Then it takes one `snapshot()` and
+  updates the elements. At most 100 ms per frame, so a hidden tab (no frames)
+  pauses the simulation instead of building a backlog.
+- `runRealtime` isn't used: when the firmware is slower than real time it never
+  yields, which would freeze the page, and it can't be paused.
+- Measured, thermometer firmware: 1.26 simulated s per wall s in Chromium at
+  full speed (0.92 in Node 24); 0.96 in the page with the 12 ms budget. Frames
+  stay at 16.7 ms (median and p95 16.7–16.8 ms, max 16.8 ms over 120 frames),
+  so the UI doesn't stutter. `snapshot()` costs 0.1 ms.
+- So the page uses most of the main thread while running, and the
+  thermometer runs close to the budget's limit. Move the engine to a Web
+  Worker when a panel needs more main-thread time per frame, or firmware
+  needs more than about 0.7× of full speed. The engine has no DOM imports, so
+  only `main.ts` changes: `load`, `runFor`, `snapshot` and `setPropAt` become
+  messages. Panels that read `engine.view()` or `engine.events` directly
+  (T34–T36) would need their data posted too, which is why the page is the
+  simpler start.
+- Inputs: `setPropAt(seconds of the last frame, …)`, which applies at once.
+  The push-button sets `pressed` on `button-press` and `button-release` (the
+  element's own `<button>`, so Space works). A part with a numeric
+  `temperature` prop (TC74, also TMP102 and MCP9808) gets a range input with
+  the prop's min and max.
+- The header shows the run state, worded as `sim run`'s message (`running`,
+  `HardFault: … at …`, `lockup: …`, `breakpoint: …`), and the simulated time.
+  The loop stops on a halt.
+
+**Drawing.**
+
+- Coordinates: CSS px at 96 per inch, the unit of `@wokwi/elements` `pinInfo`
+  (0.1 in = 9.6 px). T29's art is in 0.01 in units, drawn at
+  `PX_PER_UNIT = 0.96` (`src/ui/art/index.ts`). A part's circuit `pos` is its
+  top-left corner in these px. The canvas is shown at `zoom: 1.5`; a pointer
+  position (T31) divides by it.
+- The board is at (0, 0). A part without `pos` goes in a grid below it: 4
+  columns of 160 × 110 px cells, in circuit order. No packing, no measuring.
+- Each part is a `<figure data-part="<id>">` with its id as `<figcaption>`.
+  Wokwi elements for `led`, `7segment`, `pushbutton` and `resistor`; T29's SVG
+  for `tc74` and `mcp23017`; a labelled box for a part with neither (TMP102,
+  MCP9808).
+- Live: an LED's `value` from `state().lit`, a 7-segment's `values` from
+  `state().values` (set only when it changes).
+- **Nucleo endpoints.** Each Nucleo header pin now has its `endpoint`
+  (`src/ui/art/nucleo-g031k8.ts`): `mcu.<pin>` for an MCU pin, `3V3` or `GND`
+  for a rail, none for 5V, VIN, NRST and AREF, which the simulation doesn't
+  have. The page draws a dot on each MCU pin, coloured by its net level from
+  the snapshot (high, low, conflict; floating shows the bare pad), with the
+  level in its `<title>`: `<circle class="pin" data-pin="PA0">`.
+- Wires (T32) can find a pin's position from its figure's `pos` plus the
+  element's `pinInfo`, or the art's `pins` × `PX_PER_UNIT`.
+- Accessibility: semantic header and figures, the run state in a
+  `role="status"` region (the time is outside it, so it isn't announced every
+  frame), the button and slider are native controls, `:focus-visible` gets a
+  2 px outline, and colours are CSS variables for light and dark
+  (`prefers-color-scheme`).
+
+**Headless UI tests: `playwright-core` driven from `node:test`.**
+
+- `playwright-core` 1.63.0 (Apache-2.0, a dev dependency only, 14 MB, no
+  dependencies, no install script) with Chrome Headless Shell 153
+  (`chromium_headless_shell-1243`): a 120 MB download, 261 MB unpacked in
+  `~/.cache/ms-playwright`, installed in 6.7 s here by
+  `npx playwright-core install --only-shell chromium`. Locally, add
+  `--no-remove` if other Playwright versions share that cache: by default the
+  install deletes browsers no installation references.
+- `src/ui/ui.test.ts` starts `sim ui --port 0` as a user would, opens the page,
+  and fails on any page error, console error or request to another origin.
+  Thermometer: the digits show 22; Space held on the button for 200 ms gives
+  71; the slider at 30 gives 86. Blink with an LED on PA0 (a circuit written by
+  the test; `firmware/blink/circuit.json` stays bare, other tests use it): the
+  LED and the board's PA0 dot go on and off. Both take about 2 s.
+- A missing browser fails both tests with the install command. They never
+  skip. Playwright's own banner names `npx playwright install`, which installs
+  another package's browsers, so only its first line is kept.
+- CI caches `~/.cache/ms-playwright` with `actions/cache@v6`, keyed on
+  `package-lock.json`, then runs the install (a no-op on a cache hit).
+- **Rejected:** Puppeteer (also Apache-2.0, but it downloads Chrome from an
+  install script); the system Chrome through
+  `channel: "chrome"` (CI images have it, a learner's machine may not, and
+  its version drifts).
+
 ## Checked against RM0444 Rev 6 (2026-10-07)
 
 The reference manuals are now local, in `docs/reference/` (gitignored: ST's
@@ -895,9 +1035,6 @@ copyright). These are the "assumed" points from §8 and §9 that RM0444 settles.
 
 ## Open, deferred to the build step that needs them
 
-- **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
-  whether the engine runs in the page, in a Web Worker, or in Node behind a socket.
-  It's possible either way because the engine has no Node or DOM imports.
 - **Packaging:** how a learner gets the one-command start (`npx`, a published package
   with a `tsc` emit, or a single binary).
 - **Second chip:** the v7-M core choice in §2, and whether its SVD needs patches the

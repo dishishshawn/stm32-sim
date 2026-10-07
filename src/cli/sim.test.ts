@@ -291,3 +291,14 @@ test("a bad duration exits 2", () => {
   assert.equal(r.code, 2);
   assert.match(r.stderr, /--for: invalid duration/);
 });
+
+// A good `sim ui` serves until stopped, so src/ui/ui.test.ts starts it; here,
+// only that bad input exits 2 before serving.
+test("ui checks its input first: a missing ELF or a bad port exits 2", () => {
+  let r = sim("ui", "build/nope.elf", "--json");
+  assert.equal(r.code, 2);
+  assert.match(JSON.parse(r.stdout).error, /^build\/nope\.elf: ENOENT/);
+  r = sim("ui", elf("blink"), "--port", "http");
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /--port: expected 0 to 65535, got "http"/);
+});

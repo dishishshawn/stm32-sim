@@ -6,6 +6,9 @@
 import { dip28 } from "./dip28.ts";
 import { tc74 } from "./to220-5.ts";
 
+/** CSS px per art unit, so our art and wokwi-elements share one grid. */
+export const PX_PER_UNIT = 0.96;
+
 /** A pin's position in its art's SVG coordinates (inside the viewBox `0 0 width height`). */
 export type Pin = { readonly x: number; readonly y: number };
 

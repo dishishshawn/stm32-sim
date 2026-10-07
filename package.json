@@ -14,9 +14,11 @@
   "devDependencies": {
     "@types/node": "^24.19.1",
     "@xmldom/xmldom": "0.9.12",
+    "playwright-core": "1.63.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@gba-kit/debug-info": "0.8.0"
+    "@gba-kit/debug-info": "0.8.0",
+    "@wokwi/elements": "1.9.2"
   }
 }

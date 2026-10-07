@@ -77,6 +77,11 @@ test("nucleo: the map covers all 30 header positions exactly once", () => {
   assert.equal(nucleo.pins["CN3.1"].signal, "PB6"); // I2C1 SCL
   assert.equal(nucleo.pins["CN3.2"].signal, "PB7"); // I2C1 SDA
   assert.equal(nucleo.pins["CN4.14"].signal, "3V3");
+  // Each signal's circuit endpoint: an mcu pin or a rail; 5V has none.
+  assert.equal(nucleo.pins["CN3.1"].endpoint, "mcu.PB6");
+  assert.equal(nucleo.pins["CN4.14"].endpoint, "3V3");
+  assert.equal(nucleo.pins["CN3.4"].endpoint, "GND");
+  assert.equal(nucleo.pins["CN4.4"].endpoint, undefined);
 });
 
 test("breadboard: the hole groups cover every hole exactly once", () => {
