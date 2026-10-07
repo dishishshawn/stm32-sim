@@ -12,9 +12,10 @@ once the package's `bin` is on your PATH.
 ```
 sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
 sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
+sim ui <elf> [--circuit <json>] [--port <n>] [--open] [--json]
 ```
 
-Both load the ELF onto the circuit's chip, reset it, and run it for the given
+`run` and `inspect` load the ELF onto the circuit's chip, reset it, and run it for the given
 **simulated** time (time comes from CPU cycles at the core clock, 16 MHz after
 reset, never from the wall clock, so a run is deterministic).
 
@@ -119,6 +120,26 @@ authoritative list: a new rule is one file plus one line there, so it isn't adde
 
 File paths in the output are relative to the current directory.
 
+**`ui`** checks the ELF and circuit as `run` does (exit 2 if either is bad),
+then serves the browser UI on `127.0.0.1` until stopped with Ctrl-C:
+
+```
+$ just sim ui build/thermometer.elf --circuit firmware/thermometer/circuit.json
+sim ui: serving http://127.0.0.1:8031/ (Ctrl-C to stop)
+```
+
+- The page runs the firmware in real time and shows the circuit: LEDs and
+  7-segment digits live, push-buttons pressed while held (mouse or Space), a
+  slider for a temperature sensor, the board's MCU pins coloured by level, and
+  the run state and simulated time.
+- It reads the ELF and circuit files on each page load: rebuild, then reload
+  the page.
+- `--port <n>`: the port, default 8031; `0` picks a free one. A port in use
+  exits 2.
+- `--open`: also open the URL in the default browser.
+- It is local and offline: it listens on 127.0.0.1 only, and the page loads
+  nothing from anywhere else.
+
 ## Exit codes
 
 | Code | Meaning                                                                                  |
@@ -126,6 +147,7 @@ File paths in the output are relative to the current directory.
 | 0    | the run completed (including a stop at a BKPT)                                           |
 | 1    | firmware fault: the CPU is in its HardFault handler, or locked up                        |
 | 2    | usage or invalid input: bad arguments, a missing or unreadable ELF, invalid circuit JSON |
+| 2    | `ui`: the port is in use                                                                 |
 | 3    | internal error: a bug in the simulator                                                   |
 
 **BKPT** stops the run at the BKPT instruction, as a debugger would, with
@@ -255,6 +277,14 @@ Everything `run` has, plus:
 | `notSimulated` | features a peripheral doesn't simulate (e.g. I2C1 RELOAD), once each: `{periph, feature, count}` (added in place of the earlier `kind: "unsimulated"` entries under `i2c`; version stays 1) |
 | `unsimulated`  | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space)                                  |
 | `parts`        | `state()` of each part that has one, by part id                                                                                                                                             |
+
+### `ui`
+
+Once it is serving, one object:
+
+```json
+{ "version": 1, "command": "ui", "url": "http://127.0.0.1:8031/" }
+```
 
 ### Errors
 

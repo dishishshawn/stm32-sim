@@ -23,6 +23,7 @@
 // - The VCP (USART2, PA2/PA3) goes to the ST-LINK, not to a header (Table 7).
 //
 // I2C1 is PB6 = SCL (CN3.1) and PB7 = SDA (CN3.2), AF6.
+import { RAILS } from "../../engine/nets.ts";
 import type { Art, Pin } from "./index.ts";
 
 /** A header position: the MCU pin or board signal on it, and its Arduino Nano name. */
@@ -31,6 +32,11 @@ export type NucleoPin = Pin & {
   readonly signal: string;
   /** The Arduino name from Table 9: "D1", "A7", "+3V3". */
   readonly label: string;
+  /**
+   * The circuit endpoint the pin is on: "mcu.PB6", or a rail ("3V3", "GND").
+   * None for 5V, VIN, NRST and AREF, which the simulation doesn't have.
+   */
+  readonly endpoint?: string;
 };
 
 // [Arduino name, signal] for pins 1..15 of each header, from Table 9.
@@ -90,7 +96,12 @@ for (const [header, rows, top] of [
   const y = top ? 6.5 : 66.5;
   rows.forEach(([label, signal], i) => {
     const x = 35 + 10 * i;
-    pins[`${header}.${i + 1}`] = { x, y, signal, label };
+    const endpoint = /^P[A-F]\d+$/.test(signal)
+      ? `mcu.${signal}`
+      : Object.hasOwn(RAILS, signal)
+        ? signal
+        : undefined;
+    pins[`${header}.${i + 1}`] = { x, y, signal, label, endpoint };
     pads +=
       i === 0
         ? `<rect x="${x - 2.8}" y="${y - 2.8}" width="5.6" height="5.6"/>`

@@ -2,6 +2,7 @@
 // `sim`: the command line, a thin layer over the engine. docs/cli.md is the
 // contract: commands, flags, JSON shapes and exit codes. Changing any of them
 // is a breaking change.
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -10,7 +11,7 @@ import { chips } from "../chips/index.ts";
 import { rules } from "../diagnostics/index.ts";
 import { mhz } from "../diagnostics/names.ts";
 import { diagnose } from "../diagnostics/rule.ts";
-import { parseCircuit } from "../engine/circuit.ts";
+import { parseCircuit, serializeCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
 import { catalog, Engine, propSpec } from "../engine/engine.ts";
 import type { Snapshot } from "../engine/engine.ts";
@@ -23,6 +24,7 @@ import { clocks, SYSCLK_SOURCES } from "../peripherals/rcc.ts";
 const USAGE = `usage:
   sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
   sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
+  sim ui <elf> [--circuit <json>] [--port <n>] [--open] [--json]
 inputs, repeatable:
   --set <part>.<prop>=<value>            before the run
   --at <duration>:<part>.<prop>=<value>  at that simulated time
@@ -42,6 +44,11 @@ const json = process.argv.includes("--json");
 try {
   process.exitCode = main(process.argv.slice(2));
 } catch (e) {
+  fail(e);
+}
+
+/** Reports `e`: exit 2 for bad input, 3 for a simulator bug. */
+function fail(e: unknown) {
   const input = e instanceof InputError;
   const message = input
     ? e.message
@@ -53,19 +60,23 @@ try {
 
 function main(argv: string[]): number {
   const [command, ...rest] = argv;
-  const time = { run: "for", inspect: "at" }[command ?? ""];
-  if (!time)
+  const time = { run: "for", inspect: "at", ui: "" }[command ?? ""];
+  if (time === undefined)
     throw new InputError(
       command ? `unknown command "${command}"` : "missing command",
       true,
     );
   const options: ParseArgsConfig["options"] = {
     circuit: { type: "string" },
-    ...(time === "for" && { for: { type: "string" } }),
-    // Prop changes, and inspect's own --at <duration>: only a change has a ":".
-    at: { type: "string", multiple: true },
-    set: { type: "string", multiple: true },
     json: { type: "boolean" },
+    ...(command === "ui"
+      ? { port: { type: "string", default: "8031" }, open: { type: "boolean" } }
+      : {
+          ...(time === "for" && { for: { type: "string" } }),
+          // Prop changes, and inspect's own --at <duration>: only a change has a ":".
+          at: { type: "string", multiple: true },
+          set: { type: "string", multiple: true },
+        }),
   };
   let values, positionals;
   try {
@@ -83,6 +94,14 @@ function main(argv: string[]): number {
       true,
     );
   }
+  if (command === "ui") {
+    return ui(
+      positionals[0],
+      values.circuit as string | undefined,
+      values.port as string,
+      values.open === true,
+    );
+  }
   const ats = (values.at ?? []) as string[];
   const changes = time === "at" ? ats.filter((a) => a.includes(":")) : ats;
   const stop =
@@ -91,13 +110,7 @@ function main(argv: string[]): number {
   const elfPath = positionals[0];
   const circuitPath = values.circuit as string | undefined;
 
-  // Anything thrown reading or loading the input is the input's fault: exit 2.
-  const elf = input(elfPath, () => readFileSync(elfPath));
-  const circuit: Circuit = circuitPath
-    ? input(circuitPath, () =>
-        parseCircuit(readFileSync(circuitPath, "utf8"), catalog),
-      )
-    : { chip: Object.keys(chips)[0], parts: [], wires: [] };
+  const { elf, circuit } = readInput(elfPath, circuitPath);
   for (const text of (values.set ?? []) as string[]) {
     const { id, name, value } = assignment(text, "--set", circuit);
     circuit.parts.find((p) => p.id === id)!.props[name] = value;
@@ -287,6 +300,73 @@ function main(argv: string[]): number {
   }
   console.log(out.join("\n"));
   return exit;
+}
+
+/**
+ * `sim ui`: checks the input as `run` does (exit 2 if bad), then serves the UI
+ * until stopped. The page reads the ELF and circuit files on each load.
+ */
+function ui(
+  elfPath: string,
+  circuitPath: string | undefined,
+  portText: string,
+  open: boolean,
+): number {
+  const port = Number(portText);
+  if (!/^\d+$/.test(portText) || port > 65535) {
+    throw new InputError(
+      `--port: expected 0 to 65535, got "${portText}"`,
+      true,
+    );
+  }
+  const { elf, circuit } = readInput(elfPath, circuitPath);
+  input(elfPath, () => new Engine().load(elf, circuit));
+  // Imported here, not above: loading it costs `run` and `inspect` 60 ms.
+  import("../ui/server.ts")
+    .then(({ serveUi }) =>
+      serveUi(port, {
+        elf: () => readFileSync(elfPath),
+        circuit: () =>
+          circuitPath
+            ? readFileSync(circuitPath, "utf8")
+            : serializeCircuit(circuit),
+      }),
+    )
+    .then(
+      (url) => {
+        if (json) print({ version: 1, command: "ui", url });
+        else console.log(`sim ui: serving ${url} (Ctrl-C to stop)`);
+        if (open) {
+          const opener = { darwin: "open", win32: "explorer" }[
+            process.platform as string
+          ];
+          spawn(opener ?? "xdg-open", [url], {
+            detached: true,
+            stdio: "ignore",
+          }).unref();
+        }
+      },
+      (e: NodeJS.ErrnoException) =>
+        fail(
+          e.code === "EADDRINUSE"
+            ? new InputError(
+                `--port: ${port} is in use (--port 0 picks a free one)`,
+              )
+            : e,
+        ),
+    );
+  return 0;
+}
+
+/** The ELF's bytes and the parsed circuit, else the chip alone. Anything thrown reading them is the input's fault: exit 2. */
+function readInput(elfPath: string, circuitPath: string | undefined) {
+  const elf = input(elfPath, () => readFileSync(elfPath));
+  const circuit: Circuit = circuitPath
+    ? input(circuitPath, () =>
+        parseCircuit(readFileSync(circuitPath, "utf8"), catalog),
+      )
+    : { chip: Object.keys(chips)[0], parts: [], wires: [] };
+  return { elf, circuit };
 }
 
 /** One I2C trace step: "START", "ADDR 0x48 W  ACK", "DATA 0x16 R  NACK", "STOP". */

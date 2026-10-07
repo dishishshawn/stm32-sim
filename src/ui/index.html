@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stm32-sim</title>
+    <!-- Served by src/ui/server.ts. Only the engine's one npm import needs mapping (decisions.md §15). -->
+    <script type="importmap">
+      { "imports": { "@gba-kit/debug-info": "/debug-info/index.js" } }
+    </script>
+    <script src="/wokwi-elements.js"></script>
+    <script type="module" src="/src/ui/main.ts"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --fg: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --focus: #0969da;
+        --high: #d1242f;
+        --low: #0969da;
+        --conflict: #bf3989;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --line: #3d444d;
+          --focus: #4493f8;
+          --high: #ff7b72;
+          --low: #4493f8;
+          --conflict: #f778ba;
+        }
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.4 system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem 1.5rem;
+        align-items: baseline;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        font-size: 1rem;
+        margin: 0;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      main {
+        overflow: auto;
+        padding: 1rem;
+      }
+      /* Parts sit at their circuit "pos", in CSS px at 96 per inch, zoomed for reading. */
+      #circuit {
+        position: relative;
+        zoom: 1.5;
+      }
+      figure {
+        position: absolute;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+      }
+      figcaption,
+      .control {
+        font-size: 8px;
+        color: var(--muted);
+      }
+      .control,
+      .control label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .control input {
+        width: 70px;
+        margin: 0;
+      }
+      .control output {
+        min-width: 3ch;
+        color: var(--fg);
+        font-variant-numeric: tabular-nums;
+      }
+      /* A part with neither a wokwi element nor art yet. */
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 8px 12px;
+        font:
+          10px ui-monospace,
+          monospace;
+      }
+      :focus-visible,
+      wokwi-pushbutton:focus-within {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+      /* The Nucleo's header pins, coloured by their net's level. */
+      .pin {
+        fill: transparent;
+      }
+      .pin[data-level="high"] {
+        fill: var(--high);
+      }
+      .pin[data-level="low"] {
+        fill: var(--low);
+      }
+      .pin[data-level="conflict"] {
+        fill: var(--conflict);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>stm32-sim</h1>
+      <p><span id="run" role="status">loading</span></p>
+      <p><span id="time">0.000</span> s simulated</p>
+    </header>
+    <main>
+      <section id="circuit" aria-label="Circuit"></section>
+    </main>
+  </body>
+</html>

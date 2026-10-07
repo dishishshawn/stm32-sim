@@ -30,6 +30,7 @@ Node 24 and `just` come from `.mise.toml`. Run `npm install` once after cloning.
 - `node --test --test-name-pattern "<name>"`: run one test by name.
 - `just typecheck`: run `tsc` with no output files.
 - `just fw`: build every `firmware/<name>/main.c` into `build/<name>.elf` (needs `arm-none-eabi-gcc`).
+- UI tests (`node --test src/ui/ui.test.ts`, also in `just test`) need headless Chromium, once: `npx playwright-core install --only-shell chromium`.
 
 `node --test` treats these as test files, so don't use them for helpers: `test-*.ts`, `*-test.ts`, `*_test.ts`, `test.ts`, and anything under a `test/` directory.
 
