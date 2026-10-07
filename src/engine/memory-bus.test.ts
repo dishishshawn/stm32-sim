@@ -25,7 +25,12 @@ function setup(...peripherals: Peripheral[]) {
     events,
     now: () => ({ cycle: 42, pc: 0x08000100 }),
     nets: new Nets(),
-    cpu: { setPending() {} },
+    cpu: {
+      setPending() {},
+      clearPending() {},
+      isPending: () => false,
+      setPriority() {},
+    },
   });
   return { bus, seen };
 }
@@ -137,14 +142,14 @@ test("a write hook gets the merged value and the written bits", () => {
 test("system control space: logged, reads 0, writes ignored", () => {
   const { bus, seen } = setup();
   assert.equal(bus.readUint32(0xe000ed00), 0); // SCB CPUID
-  bus.writeUint32(0xe000e010, 5); // SysTick CSR
-  assert.equal(bus.readUint32(0xe000e010), 0);
+  bus.writeUint32(0xe000e100, 5); // NVIC ISER
+  assert.equal(bus.readUint32(0xe000e100), 0);
   assert.deepEqual(
     seen.map((e) => [e.periph, e.address, e.op, e.flags]),
     [
       ["SCS", 0xe000ed00, "read", ["unsimulated"]],
-      ["SCS", 0xe000e010, "write", ["unsimulated"]],
-      ["SCS", 0xe000e010, "read", ["unsimulated"]],
+      ["SCS", 0xe000e100, "write", ["unsimulated"]],
+      ["SCS", 0xe000e100, "read", ["unsimulated"]],
     ],
   );
 });
@@ -211,7 +216,12 @@ test("an unsubscribed listener hears nothing more", () => {
     events,
     now: () => ({ cycle: 0, pc: 0 }),
     nets: new Nets(),
-    cpu: { setPending() {} },
+    cpu: {
+      setPending() {},
+      clearPending() {},
+      isPending: () => false,
+      setPriority() {},
+    },
   });
   bus.readUint32(I2C1_OAR2);
   off();
@@ -238,7 +248,12 @@ test("a peripheral gets tick(cycles) from the bus, now() in cycles, and the cpu"
       events: new EventLog(),
       now: () => ({ cycle: 42, pc: 0 }),
       nets: new Nets(),
-      cpu: { setPending: (n) => pended.push(n) },
+      cpu: {
+        setPending: (n) => pended.push(n),
+        clearPending() {},
+        isPending: () => false,
+        setPriority() {},
+      },
     },
   );
   bus.tick(3);

@@ -2,6 +2,8 @@
 import type { Chip } from "../engine/memory-bus.ts";
 import { gpio } from "../peripherals/gpio.ts";
 import { rcc } from "../peripherals/rcc.ts";
+import { scb, scbRegisters } from "../peripherals/scb.ts";
+import { systick, systickRegisters } from "../peripherals/systick.ts";
 import registers from "./stm32g031k8.registers.json" with { type: "json" };
 
 // The I/O pins of the LQFP32 and UFQFPN32 packages (same pinout), from
@@ -48,7 +50,15 @@ export const stm32g031k8: Chip = {
   irqCount: 32,
   flash: { base: 0x0800_0000, size: 64 * 1024 },
   sram: { base: 0x2000_0000, size: 8 * 1024 },
-  registers,
+  registers: {
+    peripherals: {
+      ...registers.peripherals,
+      // Core registers the SVD doesn't have (T4), hand-written from the ARMv6-M ARM.
+      // RM0444 §12.2: "The SysTick calibration value is set to 1000".
+      SysTick: systickRegisters(1000),
+      SCB: scbRegisters,
+    },
+  },
   pins,
   // The peripheral registration list: one import and one entry per peripheral.
   // Every SVD register without one is plain storage, logged as "unsimulated".
@@ -56,5 +66,7 @@ export const stm32g031k8: Chip = {
     rcc,
     gpio("GPIOA", { register: "RCC.IOPENR", field: "IOPAEN" }, pins),
     gpio("GPIOB", { register: "RCC.IOPENR", field: "IOPBEN" }, pins),
+    systick,
+    scb,
   ],
 };
