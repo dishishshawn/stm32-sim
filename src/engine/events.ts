@@ -1,6 +1,7 @@
 // The single event log. Producers (memory bus, I2C bus, nets) emit; consumers
 // (diagnostics, the I2C trace, `sim inspect`, the UI) subscribe. It stores
 // nothing: blink writes ODR millions of times, so each consumer keeps what it needs.
+import type { Level } from "./nets.ts";
 
 /** Why an access deserves a second look. */
 export type Flag =
@@ -34,8 +35,17 @@ export interface RegEvent {
   readonly flags: readonly Flag[];
 }
 
-/** Every event kind. Later tasks add theirs to this union (I2C in T13, net changes in T9). */
-export type SimEvent = RegEvent;
+/** An endpoint's level changed (emitted by the engine). Each endpoint on a net that changed gets its own event. */
+export interface NetEvent {
+  readonly kind: "net";
+  readonly cycle: number;
+  /** "mcu.PA0", "led1.A", "3V3", ... */
+  readonly endpoint: string;
+  readonly level: Level;
+}
+
+/** Every event kind. Later tasks add theirs to this union (I2C in T13). */
+export type SimEvent = RegEvent | NetEvent;
 
 export type Subscriber = (event: SimEvent) => void;
 
