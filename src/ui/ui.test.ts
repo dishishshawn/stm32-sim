@@ -17,7 +17,7 @@ test("thermometer: shows 22; a press on the button (Space) shows 71; the slider 
   );
   await until(() => digits(page), "22", "the digits at 22 °C");
   // Held for 200 ms: the firmware looks at the button every 20 ms.
-  await page.locator('[data-part="btn"] button').focus();
+  await page.locator('[data-part="btn"] wokwi-pushbutton button').focus();
   await page.keyboard.down("Space");
   await sleep(200);
   await page.keyboard.up("Space");
