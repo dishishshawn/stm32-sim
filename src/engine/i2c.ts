@@ -39,6 +39,14 @@ export type I2cEvent =
   | { t: number; kind: "data"; byte: number; read: boolean; ack: Ack }
   | { t: number; kind: "stop" };
 
+/** A step as `sim inspect` and the UI's trace show it: "START", "ADDR 0x48 W  ACK", "DATA 0x16 R  NACK", "STOP". */
+export function i2cText(s: I2cEvent): string {
+  if (s.kind === "start" || s.kind === "stop") return s.kind.toUpperCase();
+  const [what, byte] = s.kind === "addr" ? ["ADDR", s.addr] : ["DATA", s.byte];
+  const hex2 = byte.toString(16).padStart(2, "0");
+  return `${what} 0x${hex2} ${s.read ? "R" : "W"}  ${s.ack.toUpperCase()}`;
+}
+
 export interface I2cBusOptions {
   nets: Nets;
   /** The bus's SDA and SCL endpoints, e.g. "mcu.PB7" and "mcu.PB6". */
