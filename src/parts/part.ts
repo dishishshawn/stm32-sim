@@ -34,6 +34,12 @@ export interface PartContext {
   setSwitch(a: string, b: string, closed: boolean): void;
   /** A resistor between two pins: a strong level on one side weakly pulls the other. */
   addResistor(a: string, b: string): void;
+  /**
+   * Whether two of this part's pins are on the same net (wired or switched together).
+   * For pins whose meaning depends on where they're tied, such as TMP102's ADD0
+   * (GND, V+, SDA or SCL each give a different address).
+   */
+  sameNet(a: string, b: string): boolean;
 }
 
 export interface PartInstance {
@@ -109,6 +115,7 @@ export function mountPart(
     setSwitch: (a, b, closed) =>
       nets.setSwitch(endpoint(a), endpoint(b), closed),
     addResistor: (a, b) => nets.addResistor(endpoint(a), endpoint(b)),
+    sameNet: (a, b) => nets.sameNet(endpoint(a), endpoint(b)),
   });
   return instance;
 }

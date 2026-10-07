@@ -636,11 +636,11 @@ which show these names. **Size:** M.
 
 ### T26: Part recipe, part templates, AGENTS.md commands
 
-- [ ] `docs/adding-a-part.md`: a step-by-step recipe with the TC74 as the worked
+- [x] `docs/adding-a-part.md`: a step-by-step recipe with the TC74 as the worked
       example, ending with the test.
-- [ ] `templates/part.ts` and `templates/part.test.ts`: a minimal working part.
+- [x] `templates/part.ts` and `templates/part.test.ts`: a minimal working part.
       `just test` runs its test so the template can't go stale.
-- [ ] In `AGENTS.md`, replace the "Current state" section with where the extension
+- [x] In `AGENTS.md`, replace the "Current state" section with where the extension
       points, recipes and templates are.
 
 **Verify:** `just test`. A read-through confirms that the recipe mentions only

@@ -353,9 +353,26 @@ const address = () =>
 ```
 
 - Some parts select their address by tying a pin to SDA or SCL as well as to
-  GND or VDD. A part can't tell which net a pin is on, and an idle SDA reads
-  high just like VDD, so model that choice as a string prop with the
-  datasheet's options instead (`options: ["GND", "VDD", "SDA", "SCL"]`).
+  GND or VDD. Reading the pin's level can't tell these apart, because an idle
+  SDA reads high just like VDD. Ask where the pin is wired instead, with
+  `ctx.sameNet(pin, otherPin)` against the part's own pins:
+
+  ```ts
+  const add0 = (): number | undefined =>
+    ctx.sameNet("ADD0", "GND")
+      ? 0
+      : ctx.sameNet("ADD0", "V+")
+        ? 1
+        : ctx.sameNet("ADD0", "SDA")
+          ? 2
+          : ctx.sameNet("ADD0", "SCL")
+            ? 3
+            : undefined; // floating: answer no address (say "assumed" if the datasheet is silent)
+  ```
+
+  Then the circuit's wiring decides the address, as on the real board. Don't
+  add a prop for it.
+
 - The bus doesn't tell your part whether the address phase was a read or a
   write, nor whether the controller ACKed the byte it just read. You learn
   the direction from which of `write()` and `read()` is called next.

@@ -108,3 +108,28 @@ test("every registered part has a unique type, unique pins and valid defaults", 
     }
   }
 });
+
+test("sameNet tells a part where one of its pins is tied (e.g. an address pin)", () => {
+  let ctx: Parameters<Part["create"]>[0] | undefined;
+  const addrPart: Part = {
+    type: "addr-probe",
+    pins: ["ADD0", "SDA", "SCL", "GND"],
+    props: {},
+    create(c) {
+      ctx = c;
+      return {};
+    },
+  };
+  const nets = new Nets([
+    ["u1.ADD0", "u1.SDA"],
+    ["u1.GND", "GND"],
+  ]);
+  mountPart(nets, addrPart, "u1");
+  assert.ok(ctx);
+  assert.equal(ctx.sameNet("ADD0", "SDA"), true);
+  assert.equal(ctx.sameNet("ADD0", "SCL"), false);
+  assert.equal(ctx.sameNet("ADD0", "GND"), false);
+  // A switch closing between two pins counts too.
+  ctx.setSwitch("ADD0", "SCL", true);
+  assert.equal(ctx.sameNet("ADD0", "SCL"), true);
+});
