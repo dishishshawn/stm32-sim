@@ -1,0 +1,13 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5 # installs node and just from .mise.toml
+      - run: npm ci
+      - run: just typecheck
+      - run: just test

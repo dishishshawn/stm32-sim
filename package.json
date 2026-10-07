@@ -1,0 +1,15 @@
+{
+  "name": "stm32-sim",
+  "version": "0.0.0",
+  "description": "Local, offline STM32 + breadboard simulator for learning register-level C",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "typescript": "^7.0.2"
+  }
+}

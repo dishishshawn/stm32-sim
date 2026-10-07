@@ -18,7 +18,24 @@ describes MVP scope, not a permanent limit.
 It is a learning tool, not an emulator built from scratch. Reuse existing open-source
 pieces wherever they fit. Write our own only where nothing suitable exists.
 
-## Current state: research done, no code yet
+## Commands
+
+Node 24 and `just` come from `.mise.toml`. Run `npm install` once after cloning.
+
+- `just test`: run every `*.test.ts` (`node --test`).
+- `node --test path/to/x.test.ts`: run one file.
+- `node --test --test-name-pattern "<name>"`: run one test by name.
+- `just typecheck`: run `tsc` with no output files.
+
+There is no build step: Node runs the `.ts` files directly. That only works for TS
+syntax that can be erased, so:
+
+- no `enum`, `namespace` or constructor parameter properties (`just typecheck`
+  rejects them);
+- relative imports use the `.ts` extension;
+- type-only imports use `import type`.
+
+## Current state: scaffold only (T1 done)
 
 `docs/decisions.md` records the stack and every reuse choice, with licenses and
 sources. Read it before step 1 and follow it; don't reopen a decision without new
@@ -33,8 +50,6 @@ evidence. In short:
 
 The build plan is `tasks/plan.md`: the index, dependency graph and parallel waves.
 Each task's card, with acceptance criteria and verification, is in `tasks/todo.md`.
-Task T1 adds the real build, run and test commands here, including how to run a single
-test.
 
 Build order (each step ends in a passing headless test): CPU/memory/ELF +
 `sim run`/`sim inspect` with a GPIO toggle → SysTick → I2C1 + TC74 + bus trace →
