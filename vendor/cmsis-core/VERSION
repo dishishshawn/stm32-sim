@@ -1,0 +1,20 @@
+Arm CMSIS-Core(M) headers, from CMSIS 5
+Source:     https://github.com/ARM-software/CMSIS_5
+Tag:        5.6.0 (CMSIS-Core(M) 5.3.0, per cmsis_version.h)
+Commit:     b5f0603d6a584d1724d952fd8b0737458b90d62b
+Downloaded: 2026-10-07
+License:    Apache-2.0 (LICENSE, upstream's LICENSE.txt renamed)
+
+Why 5.6.0: the cmsis-device-g0 README defers to the STM32CubeG0 release notes for
+the CMSIS Core version. STM32CubeG0 v1.6.3, the release that ships
+"STM32G0xx CMSIS V1.4.5", lists "CMSIS V5.6.0_cm0".
+
+Files, copied unmodified from upstream CMSIS/Core/Include/:
+  core_cm0plus.h      included by stm32g031xx.h
+  cmsis_version.h     included by core_cm0plus.h
+  cmsis_compiler.h    included by core_cm0plus.h
+  cmsis_gcc.h         what cmsis_compiler.h includes for GCC (and upstream clang)
+  mpu_armv7.h         included by core_cm0plus.h, since the G031 sets __MPU_PRESENT 1
+
+Not copied: the other compilers' headers that cmsis_compiler.h can pick
+(cmsis_armcc.h, cmsis_armclang*.h, cmsis_iccarm.h). Only arm-none-eabi-gcc is used.
