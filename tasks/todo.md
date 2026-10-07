@@ -631,6 +631,9 @@ alongside all of Phases 1–4. **Size:** M.
       and record in `decisions.md`:
   - the bundler or import map for Lit and `@wokwi/elements`;
   - whether the engine runs in the page or in a worker.
+- [ ] T29 notes: art units are 0.01 in (0.1 in pitch = 10 units), so scale by 0.96 to match
+      `@wokwi/elements` pin coordinates. Nucleo art pins carry a `signal` (`PB6`, `GND`, …)
+      that still has to be mapped to endpoints (`mcu.PB6`, rails).
 - [ ] The page renders the circuit with `@wokwi/elements` and the T29 art, and the
       LED and 7-segment display update live while running.
 - [ ] Choose a headless browser test setup and add it to CI. A smoke test loads the
