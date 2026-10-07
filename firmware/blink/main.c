@@ -12,13 +12,17 @@
  * look up RCC_IOPENR in the RCC chapter, GPIOx_MODER and GPIOx_ODR in the GPIO
  * chapter.
  */
-#include "stm32g0xx.h"
 
 /* How many times delay() goes round its loop between toggles. This is not a
    precise time: it depends on the code the compiler produces and on the clock.
    Built with -Og, one turn is about 10 cycles; at the 16 MHz reset clock,
    200000 turns is roughly 1/8 s, so the pin blinks about 4 times a second. */
+#include <stm32g0xx.h>
+
 #define DELAY_LOOPS 200000U
+#define RCC_IOPENR ((volatile uint32_t *)0x40021034)
+
+
 
 /* Busy-wait: burn time by counting. `volatile` makes the compiler really
    read and write i every time round, instead of deleting a loop that
@@ -30,7 +34,7 @@ static void delay(uint32_t loops) {
 
 int main(void) {
   /* 1. Enable the GPIOA clock: set the GPIOAEN bit (bit 0) of RCC_IOPENR. */
-  RCC->IOPENR |= RCC_IOPENR_GPIOAEN;
+  RCC_IOPENR |= (uint32_t)1;
 
   /* 2. Make PA0 an output. Each pin has two MODER bits: 00 input, 01 output,
         10 alternate function, 11 analog. After reset PA0 is 11 (analog), so

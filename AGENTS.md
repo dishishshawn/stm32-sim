@@ -8,7 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A local, offline, MIT-licensed learning environment for STM32 microcontrollers, with a
 virtual breadboard. It runs the learner's unmodified `.elf` from `arm-none-eabi-gcc`.
-That firmware is register-level C with no HAL. The first target is the STM32G031K8
+That firmware is register-level C with no HAL. Shawn's course exams also forbid ST's
+headers, so firmware defines each register it uses by address, e.g.
+`#define RCC_IOPENR (*(volatile uint32_t *)0x40021034U)`. The examples follow that style. The first target is the STM32G031K8
 (NUCLEO-G031K8). Other STM32s come later.
 
 The spec is `stm32-sim-brief.md`: read it before planning any step. Where the brief and

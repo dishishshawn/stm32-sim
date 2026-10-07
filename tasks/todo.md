@@ -676,6 +676,76 @@ T26. **Wave 9.** **Size:** S.
 
 ---
 
+## Phase 4b: Exam style and the clock tree (added 2026-10-07)
+
+Shawn's course exams forbid ST's headers: firmware defines each register it uses by
+address, e.g. `#define RCC_IOPENR (*(volatile uint32_t *)0x40021034U)`. Course code
+also brings SYSCLK up to 64 MHz through the PLL. Before this phase the simulator hung
+on `while (!(RCC_CR & (1U << 25)))`, because the PLL never locked.
+
+### T39: Clock tree, and simulated time that follows the clock speed
+
+- [ ] RCC models what firmware polls:
+  - HSION → HSIRDY;
+  - PLLON → PLLRDY after the lock time (DS12992 tLOCK: 15 µs typical, 40 max),
+    with PLLRCLK = (source / PLLM) × PLLN / PLLR, output only while PLLREN is set;
+  - CFGR.SW → SWS, switching only once the chosen source is ready (on hardware a
+    switch to a source that isn't ready doesn't happen);
+  - HPRE/PPRE → HCLK/PCLK.
+
+  HSE on the NUCLEO-G031K8 comes only from the ST-LINK MCO through SB7 into PC14
+  (UM2591); follow UM2591 and mark it "assumed". Cite RM0444 chapter 5 for each rule.
+- [ ] The engine's time comes from the **current** clock: simulated seconds accumulate
+  as cycles ÷ HCLK at each moment. `runFor`, part ticks (every 1 ms), `setPropAt`,
+  real-time mode, snapshot `seconds` and the CLI all use it.
+  - SysTick counts HCLK (or HCLK/8).
+  - I2C1 times bytes from its kernel clock (PCLK by default; RM0444 CCIPR).
+- [ ] A FLASH peripheral stores ACR so LATENCY reads back (firmware polls it); it is
+  no longer "unsimulated".
+- [ ] `firmware/pll-64mhz/` in exam style (no ST header): it brings SYSCLK to 64 MHz
+  and blinks. Its test shows the blink period matches 64 MHz and a SysTick at
+  LOAD = 64000 − 1 gives 1 ms. A switch to a source that isn't ready leaves SWS
+  unchanged.
+
+**Verify:** `just test`. **Blocked by:** nothing. **Size:** L.
+
+### T40: Examples in exam style, and a template
+
+- [ ] blink, blink-systick-poll/irq, tc74-read, thermometer, clock-off and the fault
+  firmwares define each register they use by address (verified against the register
+  JSON), with no `#include "stm32g0xx.h"`; `#include <stdint.h>` stays. Behavior is
+  unchanged: every existing test passes as it is.
+- [ ] `firmware/template/main.c`: a starter in exam style with comments on how to
+  find an address (RM0444 memory map plus register offset). It builds and runs.
+- [ ] `AGENTS.md` and the recipes say examples use exam style.
+
+**Verify:** `just fw && just test`. **Blocked by:** nothing. **Size:** M.
+
+### T41: Diagnostics name registers your way, with addresses
+
+- [ ] One shared helper formats a register as `GPIOB_MODER (0x50000400)` and a field
+  as `RCC_IOPENR (0x40021034) bit 1 GPIOBEN`, matching exam-style `#define` names.
+  Every rule uses it, so a learner can check their `#define` against the message.
+- [ ] Tests and `docs/cli.md` examples are updated.
+
+**Verify:** `just test`. **Blocked by:** nothing. **Size:** S.
+
+### T42: Clock diagnostics, and clocks in `inspect`
+
+- [ ] Rules:
+  - `flash-latency`: SYSCLK over 24 MHz with FLASH_ACR.LATENCY too low (RM0444 §3);
+  - `pll-out-of-range`: VCO or PLLR output outside the datasheet limits;
+  - `clock-switch-not-ready`: SW set to a source that isn't ready, so SWS doesn't
+    follow;
+  - `pll-config-while-on`: PLLCFGR written while PLLON = 1 (RM0444 says configure it
+    with the PLL off).
+
+  Each names registers the T41 way and suggests the fix.
+- [ ] `sim inspect` prints `clocks` (SYSCLK source, SYSCLK, HCLK, PCLK); `--json`
+  adds them (an additive field).
+
+**Verify:** `just test`. **Blocked by:** T39, T41. **Size:** M.
+
 ## Phase 5: UI
 
 ### T29: SVG art

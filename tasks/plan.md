@@ -222,6 +222,20 @@ The size labels are XS, S, M and L, from the skill's sizing table. Full cards ar
 - Acceptance checks 1–4 pass in CI with no display.
 - Review with Shawn before the UI work.
 
+### Phase 4b: Exam style and the clock tree (added 2026-10-07)
+
+Exams forbid ST's headers, and course code runs at 64 MHz from the PLL, which hung the
+simulator. This phase comes before the UI.
+
+| ID  | Task                                                       | Size | Blocked by |
+| --- | ---------------------------------------------------------- | ---- | ---------- |
+| T39 | Clock tree (PLL, SYSCLK switch) and simulated time from the current clock | L | — |
+| T40 | Examples in exam style (registers by address), and a template | M | — |
+| T41 | Diagnostics name registers as `GPIOB_MODER (0x50000400)`   | S    | —          |
+| T42 | Clock diagnostics, and clocks in `sim inspect`             | M    | T39, T41   |
+
+T39, T40 and T41 run in parallel.
+
 ### Phase 5: UI (brief steps 7–8)
 
 | ID  | Task                                                                                         | Size | Blocked by         |
