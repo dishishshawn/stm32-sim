@@ -65,6 +65,9 @@ diagnostics
   firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
 ```
 
+These are the rules at the time of writing. `src/diagnostics/index.ts` is the
+authoritative list: a new rule is one file plus one line there, so it isn't added here.
+
 | Rule                   | Severity  | Reports                                                                                                               |
 | ---------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
 | `gpio-clock-off`       | `warning` | an access to a peripheral whose RCC clock enable bit is 0 (any clock-gated one, not only GPIO)                        |
@@ -98,7 +101,8 @@ diagnostics
     0.250381 s  STOP
   ```
 
-- accesses to unsimulated registers: peripheral, register, read and write counts;
+- accesses to unsimulated registers: peripheral, register, read and write counts,
+  and features a peripheral doesn't simulate;
 - each part's `state()`.
 
 File paths in the output are relative to the current directory.
@@ -228,7 +232,8 @@ Everything `run` has, plus:
 | Field         | Meaning                                                                                                                                                                                 |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `registers`   | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)                               |
-| `i2c`         | I2C1's events, in order: trace steps as above (`step.kind` is `start`, `addr`, `data` or `stop`), and `{kind: "unsimulated", cycle, periph, feature}` for a feature it doesn't simulate |
+| `i2c`         | I2C1's bus trace, in order (`step.kind` is `start`, `addr`, `data` or `stop`) |
+| `notSimulated` | features a peripheral doesn't simulate (e.g. I2C1 RELOAD), once each: `{periph, feature, count}` (added in place of the earlier `kind: "unsimulated"` entries under `i2c`; version stays 1) |
 | `unsimulated` | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space)                              |
 | `parts`       | `state()` of each part that has one, by part id                                                                                                                                         |
 

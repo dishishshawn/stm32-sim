@@ -122,7 +122,8 @@ export class MemoryBus implements Bus {
   readonly #blocks = new Map<number, string>(); // 1 KB block → peripheral name
   readonly #resetValues: [Registers, Registers][] = [];
   readonly #instances: PeripheralInstance[] = [];
-  readonly #tickers: ((cycles: number) => void)[] = [];
+  // Each ticking peripheral with its clock gate: a gated-off peripheral is frozen.
+  readonly #tickers: { tick: (cycles: number) => void; gate: Slot["gate"] }[] = [];
   readonly #events: EventLog;
   readonly #now: MemoryBusOptions["now"];
 
@@ -189,7 +190,8 @@ export class MemoryBus implements Bus {
         slot.gate = gate;
       }
       this.#instances.push(instance);
-      if (instance.tick) this.#tickers.push(instance.tick.bind(instance));
+      if (instance.tick)
+        this.#tickers.push({ tick: instance.tick.bind(instance), gate });
     }
     this.reset();
   }
@@ -202,7 +204,9 @@ export class MemoryBus implements Bus {
 
   /** `cycles` CPU cycles have passed: calls each peripheral's tick(), in registration order. */
   tick(cycles: number): void {
-    for (const tick of this.#tickers) tick(cycles);
+    // Clock gating is enforced here too, not in each peripheral: with its enable
+    // bit at 0 a peripheral gets no clock, so it doesn't advance (RM0444 §5.2.17).
+    for (const { tick, gate } of this.#tickers) if (!gateOff(gate)) tick(cycles);
   }
 
   readUint8(address: number): number {
@@ -359,10 +363,11 @@ function resolveGate(
 }
 
 function gatedOff(slot: Slot): boolean {
-  return (
-    slot.gate !== undefined &&
-    (slot.gate.regs[slot.gate.reg] & slot.gate.mask) === 0
-  );
+  return gateOff(slot.gate);
+}
+
+function gateOff(gate: Slot["gate"]): boolean {
+  return gate !== undefined && (gate.regs[gate.reg] & gate.mask) === 0;
 }
 
 function get(view: DataView, offset: number, size: number): number {

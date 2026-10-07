@@ -239,20 +239,10 @@ registers are not effective" (RM0444 §5.2.17). I2C1's:
   every write is ignored and every read returns 0 without calling your read
   hook, flagged `clock-off`. The `gpio-clock-off` diagnostic explains that
   for any gated peripheral, not only GPIO.
-- **But `tick()` runs whatever the gate says.** The bus gates register
-  accesses, not time. If your peripheral does anything over time, check the
-  bit at the top of `tick()`, through `regsOf("RCC")`, as I2C1 does:
-
-```ts
-const rcc = regsOf("RCC");
-```
-
-```ts
-      tick() {
-        if (!(regs.CR1 & PE) || !(rcc.APBENR1 & I2C1EN)) return;
-```
-
-with `const I2C1EN = 1 << 21;` at the top of the file.
+- **`tick()` is gated too.** With the enable bit at 0 the bus doesn't call
+  `tick()`: a peripheral without its clock is frozen (RM0444 §5.2.17). Check
+  only your own enable bits at the top of `tick()`, e.g. `if (!(regs.CR1 & CEN))
+  return;`. I2C1 also checks its RCC bit itself, which is harmless.
 
 - A peripheral with no enable bit (RCC itself, the core's SysTick) leaves
   `gate` out.

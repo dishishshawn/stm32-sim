@@ -13,7 +13,7 @@ import { parseCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
 import { catalog, Engine, propSpec } from "../engine/engine.ts";
 import type { Snapshot } from "../engine/engine.ts";
-import type { I2cTraceEvent, UnsimulatedEvent } from "../engine/events.ts";
+import type { I2cTraceEvent } from "../engine/events.ts";
 import type { Chip } from "../engine/memory-bus.ts";
 import { propError } from "../parts/part.ts";
 import type { PropSpec, PropValue } from "../parts/part.ts";
@@ -131,12 +131,22 @@ function main(argv: string[]): number {
     string,
     { periph: string; reg: string; reads: number; writes: number }
   >();
-  const i2c: (I2cTraceEvent | UnsimulatedEvent)[] = [];
+  const i2c: I2cTraceEvent[] = [];
+  // Features a peripheral doesn't simulate (I2C1's RELOAD, a template's TIM16 ...),
+  // by peripheral and feature, with a count.
+  const notSimulated = new Map<string, { periph: string; feature: string; count: number }>();
   if (inspect) {
     engine.events.subscribe((e) => {
       if (e.kind === "net") return;
-      // Every other kind is I2C1's: its trace, and the features it doesn't simulate.
-      if (e.kind !== "reg") return void i2c.push(e);
+      if (e.kind === "i2c") return void i2c.push(e);
+      if (e.kind === "unsimulated") {
+        const key = `${e.periph}.${e.feature}`;
+        const n = notSimulated.get(key);
+        if (n) n.count++;
+        else notSimulated.set(key, { periph: e.periph, feature: e.feature, count: 1 });
+        return;
+      }
+      if (e.kind !== "reg") return;
       touched.add(e.periph);
       if (!e.flags.includes("unsimulated")) return;
       const reg = e.reg || hex(e.address); // the SCS has no register names
@@ -200,6 +210,7 @@ function main(argv: string[]): number {
       registers: registers(chip, s),
       i2c,
       unsimulated: [...unsimulated.values()],
+      notSimulated: [...notSimulated.values()],
       parts: s.parts,
     }),
   };
@@ -251,9 +262,12 @@ function main(argv: string[]): number {
       ...i2c.map(
         (e) => `  ${(e.cycle / chip.clockHz).toFixed(6)} s  ${i2cText(e)}`,
       ),
-      `unsimulated${unsimulated.size ? "" : "  (none)"}`,
+      `unsimulated${unsimulated.size || notSimulated.size ? "" : "  (none)"}`,
       ...[...unsimulated.values()].map(
         (u) => `  ${u.periph}.${u.reg}  ${u.reads} reads, ${u.writes} writes`,
+      ),
+      ...[...notSimulated.values()].map(
+        (n) => `  ${n.periph} ${n.feature} isn't simulated (${n.count}×)`,
       ),
       `parts${Object.keys(s.parts).length ? "" : "        (none)"}`,
       ...Object.entries(s.parts).map(
@@ -266,9 +280,7 @@ function main(argv: string[]): number {
 }
 
 /** One I2C trace step: "START", "ADDR 0x48 W  ACK", "DATA 0x16 R  NACK", "STOP". */
-function i2cText(e: I2cTraceEvent | UnsimulatedEvent): string {
-  if (e.kind === "unsimulated")
-    return `${e.periph} ${e.feature} isn't simulated`;
+function i2cText(e: I2cTraceEvent): string {
   const s = e.step;
   if (s.kind === "start" || s.kind === "stop") return s.kind.toUpperCase();
   const [what, byte] = s.kind === "addr" ? ["ADDR", s.addr] : ["DATA", s.byte];

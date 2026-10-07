@@ -50,8 +50,7 @@ export const tim14: Peripheral = {
   // writes are ignored and reads return 0 (§5.2.17, "not effective"). Don't
   // check it in the read and write hooks.
   gate: { register: "RCC.APBENR2", field: "TIM14EN" },
-  create({ regs, regsOf, now, cpu, events }) {
-    const rcc = regsOf("RCC");
+  create({ regs, now, cpu, events }) {
     /** The active prescaler. PSC is buffered: it is copied here only at an update event (§24.3.1). */
     let prescaler = 0;
     /** CPU cycles not yet counted: the prescaler counter. */
@@ -98,10 +97,10 @@ export const tim14: Peripheral = {
         pending = 0;
       },
 
-      // The engine calls this after every instruction, whatever the clock gate
-      // says: the bus gates register accesses only. So check the gate here.
+      // The engine calls this after every instruction, but only while the clock
+      // gate is on: the bus skips tick() with TIM14EN = 0. Check your own enables.
       tick(cycles) {
-        if (!(regs.CR1 & CEN) || !(rcc.APBENR2 & TIM14EN)) return;
+        if (!(regs.CR1 & CEN)) return;
         const arr = regs.ARR;
         // §24.4.10: "The counter is blocked while the auto-reload value is null."
         if (arr === 0) return;

@@ -260,3 +260,18 @@ test("a peripheral gets tick(cycles) from the bus, now() in cycles, and the cpu"
   assert.deepEqual(seen, [3, 42]);
   assert.deepEqual(pended, [31]);
 });
+
+test("a peripheral with its clock gated off doesn't tick: it's frozen", () => {
+  const ticked: number[] = [];
+  const ticking: Peripheral = {
+    name: "GPIOA",
+    gate: { register: "RCC.IOPENR", field: "GPIOAEN" },
+    create: () => ({ tick: (cycles: number) => void ticked.push(cycles) }),
+  };
+  const { bus } = setup(ticking);
+  bus.tick(5);
+  assert.deepEqual(ticked, [], "GPIOAEN = 0: no clock, no tick");
+  bus.regs.RCC.IOPENR |= 1; // GPIOAEN
+  bus.tick(7);
+  assert.deepEqual(ticked, [7]);
+});

@@ -649,9 +649,9 @@ parallel with T23 and T27. **Size:** M.
 
 ### T27: Peripheral and diagnostic recipes and templates
 
-- [ ] `docs/adding-a-peripheral.md`, with I2C1 as the worked example: the registers
+- [x] `docs/adding-a-peripheral.md`, with I2C1 as the worked example: the registers
       come from the SVD JSON, and the file holds behavior only.
-- [ ] Templates, each with a test template that runs in `just test`:
+- [x] Templates, each with a test template that runs in `just test`:
   - `templates/peripheral.ts` and its test;
   - `templates/diagnostic.ts` and its test.
 
