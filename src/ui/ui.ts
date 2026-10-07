@@ -17,6 +17,13 @@ export interface Ui {
   panel(title: string): HTMLElement;
   /** The header toolbar, for run controls. */
   readonly toolbar: HTMLElement;
+  /** Called with the id of the part selected on the canvas (clicked or focused), or undefined once it is removed. */
+  onSelect(fn: (id: string | undefined) => void): void;
+  /**
+   * Applies `edit` to `circuit`, then restarts the simulation on it and
+   * redraws, as adding a part does. `edit` returns what it did, for the header.
+   */
+  change(edit: () => string): Promise<void>;
 }
 
 export type Panel = (ui: Ui) => void;

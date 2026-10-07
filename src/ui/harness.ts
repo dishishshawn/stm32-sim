@@ -7,9 +7,15 @@ import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -103,17 +109,81 @@ const FONT: Record<number, string> = {
   0x6f: "9",
 };
 
-/** What the "tens" and "units" digits show, from their elements' `values`. */
-export async function digits(page: Page): Promise<string> {
-  const values = await page.evaluate(() =>
-    ["tens", "units"].map(
-      (id) =>
-        document.querySelector<HTMLElement & { values: number[] }>(
-          `[data-part="${id}"] wokwi-7segment`,
-        )!.values,
-    ),
+/** What the "tens" and "units" digits (or the 7-segment parts `ids`) show, from their elements' `values`. */
+export async function digits(
+  page: Page,
+  ids = ["tens", "units"],
+): Promise<string> {
+  const values = await page.evaluate(
+    (ids) =>
+      ids.map(
+        (id) =>
+          document.querySelector<HTMLElement & { values: number[] }>(
+            `[data-part="${id}"] wokwi-7segment`,
+          )!.values,
+      ),
+    ids,
   );
   return values
     .map((v) => FONT[v.reduce((bits, on, i) => bits | (on << i), 0)] ?? "?")
     .join("");
+}
+
+/** `circuit` in a temp file, so Save never touches the repo's. */
+export function write(t: TestContext, circuit: object): string {
+  const dir = mkdtempSync(join(tmpdir(), "sim-ui-"));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const file = join(dir, "circuit.json");
+  writeFileSync(file, JSON.stringify(circuit));
+  return file;
+}
+
+/** What the last edit or save did, from the header. */
+export const note = (page: Page) => page.textContent("#edit");
+
+export const pin = (page: Page, endpoint: string) =>
+  page.locator(`[data-endpoint="${endpoint}"]`).first();
+
+/** Clicks one pin, then the other, and waits for the restart. */
+export async function wire(page: Page, a: string, b: string) {
+  await pin(page, a).click();
+  await pin(page, b).click();
+  await until(
+    () => note(page),
+    `wired ${a} to ${b}: simulation restarted`,
+    `the header after wiring ${a} to ${b}`,
+  );
+}
+
+/** Clicks Save and returns the circuit file it wrote. */
+export async function save(page: Page, file: string) {
+  await page.click("#save");
+  await until(() => note(page), "saved", "the header after Save");
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+
+/**
+ * Selects part `id` on the canvas, sets its prop `name` in the Part panel (a
+ * select, a checkbox, or a field typed into and Enter), and waits for the restart.
+ */
+export async function setProp(
+  page: Page,
+  id: string,
+  name: string,
+  value: string | boolean,
+) {
+  await page.locator(`[data-part="${id}"]`).focus();
+  const field = page.getByRole("group", { name: `${id} (` }).getByLabel(name);
+  if (typeof value === "boolean") await field.setChecked(value);
+  else if (await field.evaluate((e) => e.tagName === "SELECT"))
+    await field.selectOption(value);
+  else {
+    await field.fill(value);
+    await field.press("Enter");
+  }
+  await until(
+    () => note(page),
+    `set ${id}.${name} to ${value}: simulation restarted`,
+    `the header after setting ${id}.${name}`,
+  );
 }
