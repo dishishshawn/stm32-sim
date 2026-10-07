@@ -28,9 +28,19 @@ COMMON := $(DEVICE)/startup_stm32g031xx.s $(DEVICE)/system_stm32g0xx.c
 
 PROGRAMS := $(patsubst %/main.c,%,$(wildcard */main.c))
 
-all: $(PROGRAMS)
+all: $(PROGRAMS) ../compile_commands.json
 
 $(PROGRAMS): %: $(BUILD)/%.elf
+
+# For clangd: compile_commands.json at the repo root (gitignored: absolute paths).
+# clangd doesn't ask arm-none-eabi-gcc where its system headers are (stdint.h,
+# ...), so they are listed with -isystem, taken from gcc's own search path.
+SYSINC := $(shell $(CC) -xc -E -Wp,-v /dev/null 2>&1 | sed -n 's|^ \(/.*\)|-isystem \1|p')
+
+../compile_commands.json: Makefile $(wildcard */main.c)
+	@{ echo '['; for f in $(PROGRAMS:%=%/main.c) $(DEVICE)/system_stm32g0xx.c; do \
+	  echo "  {\"directory\": \"$(CURDIR)\", \"file\": \"$$f\", \"command\": \"$(CC) $(CFLAGS) $(SYSINC) -c $$f\"},"; \
+	done; } | sed '$$ s/,$$//' > $@ && echo ']' >> $@
 
 $(BUILD)/%.elf: %/main.c $(COMMON) stm32g031k8.ld
 	@mkdir -p $(BUILD)

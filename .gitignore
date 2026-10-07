@@ -4,3 +4,4 @@ build/
 .claude/settings.local.json
 .claude/worktrees/
 docs/reference/
+compile_commands.json
