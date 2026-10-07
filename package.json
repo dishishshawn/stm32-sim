@@ -5,6 +5,9 @@
   "license": "MIT",
   "private": true,
   "type": "module",
+  "bin": {
+    "sim": "src/cli/sim.ts"
+  },
   "engines": {
     "node": ">=24"
   },

@@ -49,7 +49,24 @@ export interface Snapshot {
   registers: Record<string, Record<string, number>>;
   /** state() of each part that has one, by part id. */
   parts: Record<string, Readonly<Record<string, unknown>>>;
+  /** The HardFault the CPU is in (IPSR = 3), else null. */
+  fault: Fault | null;
+  /** The core's messages since load (HardFault, lockup, ...), oldest first. At most LOG_LIMIT. */
+  log: string[];
 }
+
+/** A HardFault taken: where the faulting instruction is. */
+export interface Fault {
+  /** The PC stacked on exception entry (SP+24): the faulting instruction. */
+  pc: number;
+  /** That PC as `at` gives it. */
+  at: string;
+  /** E.g. "undefined instruction 0xdeff", "bus fault at 0x30000000". */
+  reason: string;
+}
+
+const LOG_LIMIT = 100;
+const HARDFAULT = 3;
 
 interface Board {
   chip: Chip;
@@ -70,6 +87,9 @@ export class Engine {
   /** The address of the instruction executing, for events. */
   #pc = 0;
   #break: Halt | null = null;
+  #fault: Fault | null = null;
+  #log: string[] = [];
+  #lastWarn = "";
 
   /**
    * Builds a new board, sharing nothing with the last one: nets from the
@@ -118,6 +138,18 @@ export class Engine {
     // A new core every load: reset() doesn't clear lockup, IPSR or the mode (T11).
     core = new CortexM0Core(bus, chip.irqCount);
     core.reset();
+    // The core's messages go into the snapshot, not the console.
+    // ponytail: keeps the first LOG_LIMIT; a firmware that faults in a loop logs forever.
+    const note = (message: string) => {
+      if (this.#log.length < LOG_LIMIT) this.#log.push(message);
+    };
+    core.logger = {
+      warn: (_, message) => {
+        this.#lastWarn = message;
+        note(message);
+      },
+      info: (_, message) => note(message),
+    };
     bus.onBreak = (code) => {
       this.#break = { kind: "breakpoint", reason: `BKPT #${code}` };
     };
@@ -142,6 +174,8 @@ export class Engine {
     };
     this.#pc = core.PC;
     this.#break = null;
+    this.#fault = null;
+    this.#log = [];
   }
 
   /**
@@ -183,6 +217,8 @@ export class Engine {
       parts: Object.fromEntries(
         [...parts].flatMap(([id, p]) => (p.state ? [[id, p.state()]] : [])),
       ),
+      fault: core.IPSR === HARDFAULT ? this.#fault : null,
+      log: [...this.#log],
     };
   }
 
@@ -206,9 +242,20 @@ export class Engine {
       core.cycles += cycles;
     } else {
       this.#pc = core.PC;
+      const inHardFault = core.IPSR === HARDFAULT;
       cycles = core.executeInstruction();
       // Stop on the BKPT itself, as a debugger shows it (decisions.md §2).
       if (this.#break) core.PC -= core.breakRewind;
+      if (!inHardFault && core.IPSR === HARDFAULT) {
+        // Just entered: the frame is on the stack EXC_RETURN bit 2 names.
+        const sp = core.LR & 4 ? core.SPprocess : core.SPmain;
+        const pc = b.bus.readUint32(sp + 24);
+        this.#fault = {
+          pc,
+          at: where(b.elf, pc),
+          reason: this.#lastWarn.replace(/^HardFault at \S+ /, ""),
+        };
+      }
     }
     b.bus.tick(cycles);
     while (core.cycles >= b.nextPartTick) {
