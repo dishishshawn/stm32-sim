@@ -43,10 +43,15 @@ export interface UiInput {
   circuit(): string;
   /** Writes the --circuit file. Absent without one: there is nowhere to save. */
   save?(text: string): void;
+  /** T33: calls `fn` each time the ELF is rebuilt. */
+  onElfChange(fn: () => void): void;
 }
 
 /** Serves the UI on 127.0.0.1:`port` (0: any free port). Resolves to its URL. */
 export function serveUi(port: number, input: UiInput): Promise<string> {
+  // T33: the pages open on /events, server-sent events: each gets "data: elf"
+  // when the ELF is rebuilt, and reloads its firmware (src/ui/watch.ts).
+  const pages = new Set<ServerResponse>();
   const server = createServer((req, res) => {
     const { port } = server.address() as AddressInfo;
     // Only pages from this server: a site that rebinds its DNS name to
@@ -63,6 +68,16 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
       void save(req, res, input);
       return;
     }
+    // ---- T33
+    if (path === "/events") {
+      res
+        .writeHead(200, { ...HEADERS, "Content-Type": "text/event-stream" })
+        .flushHeaders();
+      pages.add(res);
+      res.on("close", () => pages.delete(res));
+      return;
+    }
+    // ---- end T33
     let type = JS;
     let body: string | Uint8Array;
     try {
@@ -117,9 +132,11 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
   });
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () =>
-      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`),
-    );
+    server.listen(port, "127.0.0.1", () => {
+      // T33: once listening, so a port in use still exits.
+      input.onElfChange(() => pages.forEach((p) => p.write("data: elf\n\n")));
+      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
+    });
   });
 }
 

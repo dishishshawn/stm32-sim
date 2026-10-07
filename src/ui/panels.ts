@@ -2,5 +2,6 @@
 import { controls } from "./controls.ts";
 import { registerView } from "./registers.ts";
 import type { Panel } from "./ui.ts";
+import { watch } from "./watch.ts";
 
-export const panels: readonly Panel[] = [controls, registerView];
+export const panels: readonly Panel[] = [controls, registerView, watch];
