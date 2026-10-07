@@ -109,18 +109,18 @@ T4 and T5. **Files:** `vendor/cmsis-device-g0/**`, `vendor/cmsis-core/**`,
 
 ### T4: Vendor the patched SVD and convert it to registers JSON
 
-- [ ] Vendor the stm32-rs `stm32g031.svd.patched`:
+- [x] Vendor the stm32-rs `stm32g031.svd.patched`:
   - record the source URL and stm32-rs commit;
   - put back ST's Apache-2.0 notice, which the patched file drops;
   - add `vendor/svd/LICENSE`.
-- [ ] `tools/svd2json.ts` writes `src/chips/stm32g031k8.registers.json`:
+- [x] `tools/svd2json.ts` writes `src/chips/stm32g031k8.registers.json`:
   - per peripheral: its base address;
   - per register: offset, size, access, reset value;
   - per field: name, bit offset, width, access;
   - `derivedFrom` resolved, keys in stable order, 2-space indent.
   - Running it twice gives byte-identical output.
   - Pick the XML parser dev dependency and record it in `decisions.md`.
-- [ ] Tests spot-check the JSON against RM0444:
+- [x] Tests spot-check the JSON against RM0444:
   - GPIOA base `0x50000000`, MODER reset `0xEBFFFFFF`;
   - GPIOB MODER reset `0xFFFFFFFF`;
   - RCC IOPENR at offset `0x34`;
@@ -189,7 +189,7 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
   - flash is read-only (follow RM0444 for direct writes; record the source);
   - SRAM is 8 KB;
   - registers are dispatched by address;
-  - an unmapped address raises HardFault, because ARMv6-M has no BusFault;
+  - an unmapped address throws `BusFault` (from `src/cpu/bus.ts`), which the core turns into a HardFault (T11), because ARMv6-M has no BusFault exception;
   - a register in the SVD that isn't simulated stores and returns its value
     (starting at the reset value), and every access is logged with the register's
     name;
@@ -205,7 +205,7 @@ T0 to run locally. **Wave 2**, parallel with T7, T11, T13, T16, T19 and T29.
       Tests cover:
   - a write with the clock gated off changes nothing and is flagged;
   - an unsimulated register is logged by name;
-  - an unmapped address raises HardFault;
+  - an unmapped address throws `BusFault`;
   - byte lanes.
 
 **Verify:** `node --test 'src/engine/**/*.test.ts' 'src/peripherals/**/*.test.ts'`. **Blocked by:** T2, T4.
@@ -280,6 +280,7 @@ and T14. **Files:** `src/cli/sim.ts`, `src/cli/sim.test.ts`, `docs/cli.md`,
       the faulting instruction. Before this, it only logged a warning.
 - [ ] A Thumb-2-only 32-bit instruction executed on the M0+ core faults. That is what
       happens to firmware built with the wrong `-mcpu`.
+- [ ] A `BusFault` thrown by the bus during an instruction enters HardFault, with the stacked PC pointing at that instruction.
 - [ ] A fault inside HardFault locks up and halts the engine. Choose how BKPT behaves
       (ARMv6-M with no debugger attached escalates it to HardFault) and record the
       choice.
@@ -304,9 +305,8 @@ with the rest of Phase 1. **Files:** `src/cpu/cortex-m0-core.ts`, its test.
   - CALIB;
   - TICKINT pends the SysTick exception in the core.
 
-  Add the SCB bits that needs (ICSR PENDST, SHPR3). Take the registers from the SVD
-  if T4 found them there; otherwise hand-write them from the ARMv6-M architecture
-  manual.
+  Add the SCB bits that needs (ICSR PENDST, SHPR3). T4 found that the SVD has no SysTick, NVIC or SCB, so hand-write them from the
+  ARMv6-M architecture manual.
 
 - [ ] The engine has two speeds:
   - `max`, the default for the CLI and tests;
@@ -331,8 +331,9 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
 
 - [ ] The `Part` interface gets an optional `i2c` target hook. Its address can change
       at runtime: the MCP23017 reads it from pins, and RESET can turn it off.
-- [ ] Trace events go into the event log: START, ADDR+R/W, ACK/NACK, DATA, STOP, each
-      timestamped. Tests with two fake targets check:
+- [ ] Trace events (START, ADDR+R/W, ACK/NACK, DATA, STOP, each timestamped) go out
+      through a callback. T9/T14 connect it to the T7 event log, so T13 doesn't depend
+      on T7. Tests with two fake targets check:
   - each transaction reaches the right target;
   - NACK when no target answers;
   - not idle when there are no pull-ups;

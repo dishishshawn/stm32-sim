@@ -1,3 +1,15 @@
+/**
+ * Thrown by a Bus for an access with nothing behind it. The core turns it into
+ * a HardFault: ARMv6-M has no separate BusFault exception.
+ */
+export class BusFault extends Error {
+  readonly address: number;
+  constructor(address: number) {
+    super(`bus fault at 0x${(address >>> 0).toString(16).padStart(8, "0")}`);
+    this.address = address >>> 0;
+  }
+}
+
 /** The CPU core's only view of the chip: memory accesses and the break hook. */
 export interface Bus {
   readUint8(address: number): number;
