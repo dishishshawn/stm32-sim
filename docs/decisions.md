@@ -415,6 +415,50 @@ dozens of net resolutions per byte and show a learner nothing more.
 pulled low mid-transaction goes unseen. There is no arbitration loss (ARLO) and no
 clock stretching. I2C bit-banged on GPIO pins reaches no target. Revisit with bit-level
 simulation if a part or a lesson needs one of these.
+## 8. Memory bus, peripherals and events (T7)
+
+`src/engine/memory-bus.ts`, `src/peripherals/peripheral.ts`, `src/engine/events.ts`.
+RM0444 itself couldn't be fetched while this was written (st.com refuses scripted
+downloads), so every RM0444 point below is marked **assumed** until someone checks it
+against the PDF.
+
+- **Flash** is read-only to plain stores. A write is ignored and logged as `flash`,
+  flagged `read-only`, with no fault. RM0444's FLASH_SR.PGSERR reads "set by hardware
+  when a write access to the Flash memory is performed by the code while PG or FSTPG
+  have not been set" (quoted from a web search result, not the PDF). That text names a
+  flag, not a bus error. Setting PGSERR is left to a FLASH model. **Assumed:** no fault.
+- **Flash is also mapped at `0x00000000`** (boot from main flash), because the core
+  reads the vector table at VTOR = 0. **Assumed:** default boot configuration.
+  System memory, OTP and option bytes (`0x1FFFxxxx`) aren't mapped: they fault.
+- **Peripheral blocks are 1 KB-aligned**, found from each SVD peripheral's base. All
+  484 registers fall inside their peripheral's block. SYSCFG and VREFBUF share
+  `0x40010000`. **Assumed:** RM0444's boundary table wasn't checked. An address in a
+  block with no register is `reserved`: it reads 0 and ignores writes (**assumed**).
+  An address outside every block throws `BusFault`.
+- **System control space** `0xE000E000–0xE000EFFF`: logged as `SCS`, flagged
+  `unsimulated`, reads 0, ignores writes. Lookup order is SVD registers, then SCS,
+  then reserved. So T12 adds SysTick by putting its hand-written registers into the
+  chip's register map and registering a peripheral, with no bus change.
+- **Unsimulated SVD registers** keep a value, starting at the reset value. Access
+  type isn't enforced: a write to a read-only register is stored too. Registers that
+  share an offset (TIMx `CCMR1_Input`/`CCMR1_Output`, SPI `DR`/`DR8`, CRC
+  `DR`/`DR16`/`DR8`, ADC `CHSELR0`/`CHSELR1`) are one value, under the first name
+  listed, with that name's reset value.
+- **Byte lanes.** Peripheral registers are 32-bit words. A byte or halfword read
+  returns its lanes. A write merges its lanes into the stored value, and a write hook
+  gets that merged value plus the mask of the bits written. An unaligned register
+  access throws `BusFault` (ARMv6-M faults unaligned accesses). Flash and SRAM don't
+  check alignment yet; that belongs to T11.
+- **Clock gating** is checked from the gate register's _stored_ value, so it works
+  before an RCC model exists. With the bit at 0, writes are ignored, and reads
+  return 0 without calling the read hook. Both are flagged `clock-off`. **Assumed:**
+  reads return 0, because RM0444 wasn't available to check.
+- **Events** go to subscribers and aren't stored. The bus builds an event only while
+  someone subscribes. It calls `now()` for the cycle and PC only then. A write's event
+  is emitted before the write takes effect, so events the write causes follow it.
+  Flash and SRAM accesses aren't events, except ignored flash writes. The card's
+  `{t, …, new}` became `{cycle, …, op, value}`, plus `address`, so reserved and SCS
+  accesses, which have no register name, can still be located.
 
 ## Open, deferred to the build step that needs them
 
