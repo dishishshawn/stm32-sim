@@ -1,4 +1,5 @@
 // The part registration list: add one import and one entry per part.
+import { breadboard } from "./breadboard.ts";
 import { led } from "./led.ts";
 import { mcp23017 } from "./mcp23017.ts";
 import { mcp9808 } from "./mcp9808.ts";
@@ -18,4 +19,5 @@ export const parts: readonly Part[] = [
   mcp23017,
   tmp102,
   mcp9808,
+  breadboard,
 ];

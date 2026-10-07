@@ -104,10 +104,19 @@
           border-top: 1px solid var(--line);
         }
       }
-      /* Parts sit at their circuit "pos", in CSS px at 96 per inch, zoomed for reading. */
+      /* Parts sit at their circuit "pos", in CSS px at 96 per inch, zoomed for reading.
+         Stacked bottom to top: breadboards, the board, wires, parts (so a part
+         under a wire can still be dragged), the board's pins. */
       #circuit {
         position: relative;
         zoom: 1.5;
+        isolation: isolate;
+      }
+      figure[data-type] {
+        z-index: 1;
+      }
+      figure[data-type="breadboard"] {
+        z-index: -1;
       }
       /* The palette and Save. */
       .edit {
@@ -132,13 +141,97 @@
         touch-action: none;
         user-select: none;
       }
+      /* A part's top-left is its "pos": a pin is at pos plus its pinInfo or art position. */
       figure {
         position: absolute;
         margin: 0;
         display: flex;
         flex-direction: column;
-        align-items: center;
+        align-items: flex-start;
         gap: 2px;
+      }
+      figure .body {
+        position: relative;
+        display: flex;
+      }
+      /* Each pin's target: click one, then another, to wire them. */
+      .pin-target {
+        position: absolute;
+        z-index: 2;
+        box-sizing: border-box;
+        width: 6px;
+        height: 6px;
+        margin: -3px 0 0 -3px;
+        padding: 0;
+        border: 1px solid var(--muted);
+        border-radius: 50%;
+        background: transparent;
+        cursor: crosshair;
+      }
+      .pin-target:hover,
+      .pin-target:focus-visible,
+      .pin-target.from {
+        background: var(--focus);
+        border-color: var(--focus);
+      }
+      #wires {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+        pointer-events: none;
+        z-index: 0;
+      }
+      #wires line {
+        stroke-linecap: round;
+      }
+      /* A wider, invisible line to click; none while a wire is being drawn, so pins under wires stay reachable. */
+      .wire .hit {
+        stroke: transparent;
+        stroke-width: 6px;
+        pointer-events: stroke;
+        cursor: pointer;
+      }
+      #circuit[data-wiring] .wire .hit {
+        pointer-events: none;
+      }
+      /* Coloured by the net's level, as the board's pins are; floating is dashed. */
+      .wire .line {
+        stroke: var(--muted);
+        stroke-width: 1.5px;
+      }
+      .wire[data-level="floating"] .line {
+        stroke-dasharray: 3 2;
+      }
+      .wire[data-level="high"] .line {
+        stroke: var(--high);
+      }
+      .wire[data-level="low"] .line {
+        stroke: var(--low);
+      }
+      .wire[data-level="conflict"] .line {
+        stroke: var(--conflict);
+      }
+      /* Selected: focused, by a click or Tab. */
+      .wire:focus {
+        outline: none;
+      }
+      .wire:focus .line {
+        stroke-width: 3px;
+      }
+      .wire:focus .hit {
+        stroke: color-mix(in srgb, var(--focus) 35%, transparent);
+      }
+      .band {
+        stroke: var(--focus);
+        stroke-width: 1.5px;
+        stroke-dasharray: 2 2;
+        visibility: hidden;
+      }
+      #circuit[data-wiring] .band {
+        visibility: visible;
       }
       figcaption,
       .control {
@@ -162,6 +255,7 @@
       }
       /* A part with neither a wokwi element nor art yet. */
       .chip {
+        box-sizing: border-box;
         border: 1px solid var(--line);
         border-radius: 3px;
         padding: 8px 12px;

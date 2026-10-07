@@ -985,8 +985,8 @@ stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
   have. The page draws a dot on each MCU pin, coloured by its net level from
   the snapshot (high, low, conflict; floating shows the bare pad), with the
   level in its `<title>`: `<circle class="pin" data-pin="PA0">`.
-- Wires (T32) can find a pin's position from its figure's `pos` plus the
-  element's `pinInfo`, or the art's `pins` × `PX_PER_UNIT`.
+- A pin's position is its figure's `pos` plus the element's `pinInfo`, or
+  the art's `pins` × `PX_PER_UNIT` (T32, below).
 - Accessibility: semantic header and figures, the run state in a
   `role="status"` region (the time is outside it, so it isn't announced every
   frame), the button and slider are native controls, `:focus-visible` gets a
@@ -1009,13 +1009,89 @@ stripTypeScriptTypes is an experimental feature`). `server.ts` calls it once
 - Adding or removing restarts the simulation: `engine.load()` on the edited
   circuit (the same object, so panels' `ui.circuit` stays current) with the
   ELF re-fetched, then a redraw. The header says so. Moving doesn't: `pos`
-  isn't simulated.
+  isn't simulated. Since T32, a move that plugs pins into a breadboard or
+  pulls them out does (below).
 - Save `PUT`s `serializeCircuit()` to `/circuit`. The server writes only
   `serializeCircuit(parseCircuit(body))`, only to the `--circuit` file (409
   without one), and only for a request whose `Origin` is its own (403
   otherwise). Another site's page can't `PUT` here anyway: that needs a CORS
   preflight the server never grants. A body `parseCircuit` rejects gets 400
   and no write. Saving an unchanged canonical file is byte-identical.
+
+**Wires and the breadboard (T32).** In `main.ts`, plus the `breadboard`
+part.
+
+- **Pins.** Every pin gets a `<button class="pin-target">` on its part,
+  titled `led1 pin A` (`board pin PB6 (D1)` on the Nucleo), with its endpoint
+  in `data-endpoint`. Buttons, so Tab reaches them and Enter clicks them; a
+  breadboard's 400 holes are 400 tab stops, which is workable but slow. Board
+  pins are its header positions with an `endpoint`. GND is on two, and a wire
+  to GND is drawn to the first. A part with neither an element nor art (TMP102,
+  MCP9808) gets its pins in a row along the top of its box, 0.1 in apart.
+- **Pin positions are computed, not measured.** Figures now align their
+  content to the top-left (they centred it), so the element's top-left is the
+  part's `pos`, and a pin is `pos` plus its `pinInfo` (or art pin ×
+  `PX_PER_UNIT`). No `getBoundingClientRect`, so no waiting for Lit's first
+  render. The wokwi `pinInfo` comes from a throwaway element per type.
+- **Making a wire:** click a pin, then another: the wire is appended to
+  `circuit.wires` as `[first, second]` and the simulation restarts through
+  T31's `change()`. A dashed rubber band follows the pointer, or the pin
+  the keyboard is on. Escape, or the first pin again, cancels. A pair already
+  wired (either way round) isn't added twice. Wires are only ever appended or
+  removed, never reordered, so a hand-written file's order survives.
+- **Drawing:** one SVG over the canvas, one `<g class="wire">` per wire: a
+  1.5 px line coloured by its net's level (`engine.view().level()` each
+  frame; `--high`, `--low`, `--conflict` from the board's pins; floating is
+  muted and dashed), over a 6 px transparent line to click. A click focuses
+  it (`tabindex`), which is the selection; Delete or Backspace removes it, no
+  confirmation (a wire is cheap to redraw). A wire to an MCU pin on no header
+  isn't drawn.
+- **Stacking:** breadboards, the board, wires, parts, then the board's pins
+  (`z-index`, under `isolation: isolate`). Wires go under parts so a part
+  crossed by wires can still be dragged; the board's pins go over wires so
+  they stay clickable. Wires don't take the pointer while one is being drawn,
+  so a hole under a wire's end can be its second pin.
+- **The breadboard is a part**, `src/parts/breadboard.ts`: pins are the
+  art's 400 hole names, and `create()` closes `setSwitch(first, hole)` across
+  each of `art/breadboard.ts`'s 64 groups. So a strip's holes are one net by
+  the engine's own nets, with no core change, and a breadboard circuit runs
+  the same from the CLI. Cost (thermometer, Node 24, this laptop): `load()`
+  13 → 49 ms on the first load (3 → 39 ms after), and 2 simulated s take
+  2.48–2.52 s instead of 2.15–2.35 s: about 10 % slower, because every net
+  change re-resolves 400 more endpoints (`nets.ts`'s `ponytail:`).
+- **Plugging a part in: snap, chosen over explicit pin-to-hole wires.** A
+  learner drags an LED onto the breadboard, as on a real one. Explicit wires
+  would cost no code, but the part's own pin button covers the hole under it,
+  so its "plug" could only go to a neighbouring hole: a jumper, not a plug.
+  - A **plug** is an ordinary wire `[part pin, hole]` whose two ends are within
+    GRID / 3 (3.2 px) of each other. Nothing marks it: the file stays plain
+    `wires`, hand-editable, and the CLI runs it. Drawn, it has no length.
+  - **Seating:** a part dropped by pointer (drag end, or from the palette)
+    moves so its pin nearest a hole (within 0.75 grid, which reaches one from
+    anywhere over the holes) sits exactly on it. The 3.2 px tolerance covers
+    wokwi parts that aren't on the 0.1 in pitch: the LED's legs are 10 px
+    apart, the resistor's 58.8 px, the DIP art's rows 0.32 in.
+  - After each move, `rewire(before)` compares plugs before and after:
+    plugs that came apart are taken out, new ones appended. Only if that
+    changed the wires does the move restart the simulation, saying e.g.
+    `moved led1 (0 in, 2 out)`. A wire drawn from a pin to a far hole isn't a
+    plug, so it stays and stretches.
+  - Arrow keys: a part with plugs steps exactly 0.1 in (staying hole to
+    hole); otherwise it snaps to the grid as in T31, and isn't seated, since
+    the grid and the holes are half a pitch apart in places. So a keyboard
+    user plugs a part in with wires to holes.
+  - Moving a breadboard doesn't carry its parts: they stay, and come
+    unplugged. Moving it back plugs them in again.
+- **Tests:** `src/ui/wire.test.ts`. The thermometer rebuilt in the page:
+  TC74 (A0) and the two common-cathode displays start placed, because the
+  page has no prop editor; the MCP23017, button and both resistors come from
+  the palette, and all 34 wires are clicked in. It shows 22, then 71 after a
+  press, and Save writes the 34 wires in the order drawn. Then Escape, the
+  keyboard, wire ends at the pins' centres following an arrow-key move, and
+  click-then-Delete on a wire, with blink. Then a breadboard from the
+  palette, an LED dropped on it and plugged into a9/a10, PA0 through strip
+  e10 and the − rail to GND: it blinks; dragged off, the two plugs go.
+  About 15 s for the three.
 
 **Headless UI tests: `playwright-core` driven from `node:test`.**
 

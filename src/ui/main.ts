@@ -1,7 +1,8 @@
 // The browser side of `sim ui`: loads the firmware and circuit from the
 // server, runs the engine in this page at real-time speed, and shows each
-// part's state(). Parts can be added, moved and removed, and the circuit saved
-// back to its file. Choices are recorded in docs/decisions.md §15.
+// part's state(). Parts can be added, moved and removed, wires drawn and
+// removed, and the circuit saved back to its file. Choices are recorded in
+// docs/decisions.md §15.
 import { parseCircuit, serializeCircuit } from "../engine/circuit.ts";
 import type { Circuit, CircuitPart } from "../engine/circuit.ts";
 import { catalog, Engine, propSpec } from "../engine/engine.ts";
@@ -40,6 +41,17 @@ const ELEMENT: Record<string, string> = {
 };
 
 type Wokwi = HTMLElement & Record<string, unknown>;
+/** A pin's name and where it is drawn, from its figure's top-left, in CSS px. */
+type Spot = { pin: string; x: number; y: number };
+type Wire = [string, string];
+
+/** The board's header pins that are circuit endpoints, by endpoint. GND is on two: wires go to the first. */
+const HEADER = new Map(
+  Object.values(nucleo.pins)
+    .filter((p) => p.endpoint)
+    .reverse()
+    .map((p) => [p.endpoint!, p]),
+);
 
 const $ = (id: string) => document.getElementById(id)!;
 const engine = new Engine();
@@ -56,6 +68,10 @@ let last: number | undefined;
 let looping = false;
 /** Edited in place, so panels' ui.circuit stays the one shown. */
 let circuit: Circuit;
+/** The endpoint a wire being drawn starts at: its first pin is picked, not its second. */
+let pending: string | undefined;
+/** pinSpots() by part type. */
+const spotsOf = new Map<string, readonly Spot[]>();
 
 try {
   const [elf, text] = await Promise.all([
@@ -151,21 +167,94 @@ function where(p: CircuitPart) {
 }
 /** On the 0.1 in grid, written as 28.8 rather than 28.799999999999997, and on the canvas. */
 function snap(v: number) {
-  return Math.max(0, Number((Math.round(v / GRID) * GRID).toFixed(1)));
+  return tenth(Math.round(v / GRID) * GRID);
+}
+/** To 0.1 px, and on the canvas. */
+function tenth(v: number) {
+  return Math.max(0, Number(v.toFixed(1)));
 }
 
-/** The board at the top left, and each part at its "pos" or in the grid. */
+/**
+ * Where a part type's pins are drawn: its element's pinInfo, or its art's
+ * pins. A part drawn as a plain box gets a row of pins along its top.
+ */
+function pinSpots(type: string): readonly Spot[] {
+  let spots = spotsOf.get(type);
+  if (spots) return spots;
+  const { pins } = catalog.parts.find((p) => p.type === type)!;
+  const art = partArt[type];
+  spots = ELEMENT[type]
+    ? (
+        (document.createElement(ELEMENT[type]) as Wokwi).pinInfo as {
+          name: string;
+          x: number;
+          y: number;
+        }[]
+      )
+        .filter((p) => pins.includes(p.name))
+        .map(({ name, x, y }) => ({ pin: name, x, y }))
+    : art
+      ? pins.map((pin) => ({
+          pin,
+          x: art.pins[pin].x * PX_PER_UNIT,
+          y: art.pins[pin].y * PX_PER_UNIT,
+        }))
+      : pins.map((pin, i) => ({ pin, x: GRID / 2 + i * GRID, y: 0 }));
+  spotsOf.set(type, spots);
+  return spots;
+}
+
+/** Where an endpoint is on the canvas; undefined if it isn't drawn (an MCU pin on no header). */
+function spot(endpoint: string): { x: number; y: number } | undefined {
+  const header = HEADER.get(endpoint);
+  if (header) return { x: header.x * PX_PER_UNIT, y: header.y * PX_PER_UNIT };
+  // An endpoint is "<id>.<pin>", and an id has no dot.
+  const dot = endpoint.indexOf(".");
+  const part = circuit.parts.find((p) => p.id === endpoint.slice(0, dot));
+  const pin = endpoint.slice(dot + 1);
+  const s = part && pinSpots(part.type).find((s) => s.pin === pin);
+  if (!part || !s) return undefined;
+  const at = where(part);
+  return { x: at.x + s.x, y: at.y + s.y };
+}
+
+/**
+ * The board at the top left, each part at its "pos" or in the grid, and the
+ * wires over them. Every pin gets a button: click one, then another, to wire them.
+ */
 function render() {
   drawn = [];
+  stop();
   $("circuit").replaceChildren();
-  const place = (id: string, x: number, y: number, ...content: Node[]) => {
+  /** A figure at (x, y): `visual` at its top-left with `pins` [label, endpoint, spot] on it, then `rest`. */
+  const place = (
+    id: string,
+    x: number,
+    y: number,
+    visual: Node,
+    pins: [string, string, Spot][],
+    ...rest: Node[]
+  ) => {
     const fig = document.createElement("figure");
     fig.dataset.part = id;
     fig.style.left = `${x}px`;
     fig.style.top = `${y}px`;
+    const body = document.createElement("div");
+    body.className = "body";
+    body.append(visual);
+    for (const [label, endpoint, s] of pins) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pin-target";
+      b.title = label;
+      b.dataset.endpoint = endpoint;
+      b.style.left = `${s.x}px`;
+      b.style.top = `${s.y}px`;
+      body.append(b);
+    }
     const caption = document.createElement("figcaption");
     caption.textContent = id;
-    fig.append(...content, caption);
+    fig.append(body, ...rest, caption);
     $("circuit").append(fig);
     return fig;
   };
@@ -193,16 +282,33 @@ function render() {
       dots[i].firstChild!.textContent = `${p.signal} (${p.label}): ${level}`;
     }),
   );
-  place("mcu", 0, 0, board);
+  place(
+    "mcu",
+    0,
+    0,
+    board,
+    Object.values(nucleo.pins).flatMap((p) =>
+      p.endpoint
+        ? [
+            [
+              `board pin ${p.signal}${p.endpoint.startsWith("mcu.") ? ` (${p.label})` : ""}`,
+              p.endpoint,
+              { pin: p.signal, x: p.x * PX_PER_UNIT, y: p.y * PX_PER_UNIT },
+            ],
+          ]
+        : [],
+    ),
+  );
 
   engine.view().parts.forEach((p, i) => {
     const pos = where(circuit.parts[i]);
+    let visual: Node;
     const content: Node[] = [];
     const tag = ELEMENT[p.type];
     const art = partArt[p.type];
     if (tag) {
       const el = document.createElement(tag) as Wokwi;
-      content.push(el);
+      visual = el;
       if (p.type === "resistor") el.value = String(p.props.ohms);
       if (p.type === "led") drawn.push((s) => (el.value = s.parts[p.id].lit));
       if (p.type === "7segment") {
@@ -218,12 +324,13 @@ function render() {
         );
       }
     } else if (art) {
-      content.push(svg(art, p.type));
+      visual = svg(art, p.type);
     } else {
       const box = document.createElement("span");
       box.className = "chip";
       box.textContent = p.type;
-      content.push(box);
+      box.style.minWidth = `${p.pins.length * GRID}px`; // its row of pins
+      visual = box;
     }
     // A temperature sensor's slider (TC74, and any part with the same prop).
     const spec = Object.hasOwn(p.props, "temperature")
@@ -248,9 +355,58 @@ function render() {
       control.append(label, output);
       content.push(control);
     }
-    movable(place(p.id, pos.x, pos.y, ...content), circuit.parts[i]);
+    const spots = pinSpots(p.type).map((s): [string, string, Spot] => [
+      `${p.id} pin ${s.pin}`,
+      `${p.id}.${s.pin}`,
+      s,
+    ]);
+    const fig = place(p.id, pos.x, pos.y, visual, spots, ...content);
+    fig.dataset.type = p.type;
+    movable(fig, circuit.parts[i]);
+  });
+
+  // The wires, each coloured by its net's level, and the rubber band of one
+  // being drawn. A wire is focusable: click or Tab to it, then Delete.
+  const t = document.createElement("template");
+  t.innerHTML = `<svg id="wires" role="group" aria-label="Wires">${circuit.wires
+    .map(
+      ([a, b], i) =>
+        `<g class="wire" data-wire="${i}" tabindex="0" role="button" aria-label="wire ${a} to ${b}" aria-keyshortcuts="Delete"><title/><line class="hit"/><line class="line"/></g>`,
+    )
+    .join("")}<line class="band"/></svg>`;
+  const overlay = t.content.firstElementChild!;
+  $("circuit").append(overlay);
+  const wires = overlay.querySelectorAll<SVGGElement>(".wire");
+  drawn.push(() => {
+    const view = engine.view();
+    wires.forEach((g, i) => {
+      const level = view.level(circuit.wires[i][0]);
+      if (g.dataset.level === level) return;
+      g.dataset.level = level;
+      g.firstChild!.textContent = `${circuit.wires[i].join(" to ")}: ${level}. Click, then Delete, to remove it`;
+    });
   });
   fit();
+  drawWires();
+}
+
+/** Puts each wire between its pins' spots. A wire to a pin that isn't drawn is hidden. */
+function drawWires() {
+  const lines = $("circuit").querySelectorAll<SVGGElement>(".wire");
+  circuit.wires.forEach(([a, b], i) => {
+    const from = spot(a);
+    const to = spot(b);
+    lines[i].style.display = from && to ? "" : "none";
+    if (from && to)
+      for (const l of lines[i].querySelectorAll("line")) line(l, from, to);
+  });
+}
+
+function line(l: Element, from: { x: number; y: number }, to = from) {
+  l.setAttribute("x1", String(from.x));
+  l.setAttribute("y1", String(from.y));
+  l.setAttribute("x2", String(to.x));
+  l.setAttribute("y2", String(to.y));
 }
 
 /** Sizes the canvas to hold every part, so it scrolls to them. */
@@ -267,39 +423,48 @@ function zoom() {
 
 /**
  * Drag with the pointer, or the arrow keys for one grid step; either writes
- * the part's "pos". Delete asks, then removes it. Moving doesn't restart the
- * simulation: "pos" isn't simulated.
+ * the part's "pos". Delete asks, then removes it. Moving restarts the
+ * simulation only if it plugs pins into a breadboard or pulls them out
+ * (plugs()): "pos" itself isn't simulated.
  */
 function movable(fig: HTMLElement, part: CircuitPart) {
   fig.tabIndex = 0;
   fig.title = "Drag or use the arrow keys to move it; Delete removes it";
-  const move = (x: number, y: number) => {
+  const put = (pos: { x: number; y: number }) => {
     const old = where(part);
-    const pos = { x: snap(x), y: snap(y) };
     if (pos.x === old.x && pos.y === old.y) return;
     part.pos = pos;
     fig.style.left = `${pos.x}px`;
     fig.style.top = `${pos.y}px`;
     fit();
+    drawWires();
   };
   fig.addEventListener("keydown", (e) => {
-    if (e.target !== fig) return; // the slider's arrows are its own
+    if (e.target !== fig) return; // the slider's and pins' keys are their own
     const step = ARROWS[e.key];
     if (step) {
       e.preventDefault();
-      const { x, y } = where(part);
-      move(x + step[0] * GRID, y + step[1] * GRID);
+      const before = plugs();
+      const x = where(part).x + step[0] * GRID;
+      const y = where(part).y + step[1] * GRID;
+      // A part in a breadboard moves hole to hole, not back onto the grid.
+      const plugged = before.some(([pin]) => pin.startsWith(`${part.id}.`));
+      put(plugged ? { x: tenth(x), y: tenth(y) } : { x: snap(x), y: snap(y) });
+      replug(part, before);
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       remove(part);
     }
   });
   fig.addEventListener("pointerdown", (e) => {
-    // The push-button and the slider keep their own pointer.
-    const own = (e.target as Element).closest(".control, wokwi-pushbutton");
+    // The push-button, the slider and the pins keep their own pointer.
+    const own = (e.target as Element).closest(
+      ".control, wokwi-pushbutton, .pin-target",
+    );
     if (own || e.button !== 0) return;
     fig.setPointerCapture(e.pointerId);
     const from = { ...where(part), cx: e.clientX, cy: e.clientY, z: zoom() };
+    const before = plugs();
     let moved = false;
     const drag = (e: PointerEvent) => {
       const dx = (e.clientX - from.cx) / from.z;
@@ -307,15 +472,112 @@ function movable(fig: HTMLElement, part: CircuitPart) {
       // A click isn't a move: it would snap an unmoved part to the grid.
       if (!moved && Math.hypot(dx, dy) < GRID / 2) return;
       moved = true;
-      move(from.x + dx, from.y + dy);
+      put({ x: snap(from.x + dx), y: snap(from.y + dy) });
     };
     fig.addEventListener("pointermove", drag);
     fig.addEventListener(
       "lostpointercapture",
-      () => fig.removeEventListener("pointermove", drag),
+      () => {
+        fig.removeEventListener("pointermove", drag);
+        if (!moved) return;
+        const seated = seat(part);
+        if (seated) put(seated);
+        replug(part, before);
+      },
       { once: true },
     );
   });
+}
+
+/** Every breadboard hole on the canvas. */
+function holes() {
+  return circuit.parts
+    .filter((p) => p.type === "breadboard")
+    .flatMap((bb) => {
+      const at = where(bb);
+      return pinSpots(bb.type).map((s) => ({
+        endpoint: `${bb.id}.${s.pin}`,
+        x: at.x + s.x,
+        y: at.y + s.y,
+      }));
+    });
+}
+
+/**
+ * Plugs: each part pin within GRID / 3 of a breadboard hole, as the wire
+ * [pin, hole]. Wokwi's parts aren't all on the 0.1 in pitch (an LED's legs are
+ * 10 px apart, not 9.6), so a pin need not be dead on its hole.
+ */
+function plugs(): Wire[] {
+  const all = holes();
+  if (!all.length) return [];
+  return circuit.parts
+    .filter((p) => p.type !== "breadboard")
+    .flatMap((p) =>
+      pinSpots(p.type).flatMap((s): Wire[] => {
+        const pin = `${p.id}.${s.pin}`;
+        const at = spot(pin)!;
+        const hole = all.find(
+          (h) => Math.hypot(h.x - at.x, h.y - at.y) < GRID / 3,
+        );
+        return hole ? [[pin, hole.endpoint]] : [];
+      }),
+    );
+}
+
+/**
+ * Where a part dropped on a breadboard goes: moved so that its pin nearest a
+ * hole sits in it. Undefined if no pin is over the holes.
+ */
+function seat(part: CircuitPart) {
+  if (part.type === "breadboard") return undefined;
+  const all = holes();
+  let best: { d: number; dx: number; dy: number } | undefined;
+  for (const s of pinSpots(part.type)) {
+    const at = spot(`${part.id}.${s.pin}`)!;
+    for (const h of all) {
+      const d = Math.hypot(h.x - at.x, h.y - at.y);
+      // 0.75 grid reaches a hole from anywhere over the board.
+      if (d < GRID * 0.75 && (!best || d < best.d))
+        best = { d, dx: h.x - at.x, dy: h.y - at.y };
+    }
+  }
+  if (!best) return undefined;
+  const at = where(part);
+  return { x: tenth(at.x + best.dx), y: tenth(at.y + best.dy) };
+}
+
+/**
+ * The wires after a move, given the plugs before it: a plug that came apart
+ * is taken out, and a pin now on a hole gets its plug, appended. Undefined if
+ * nothing changed. A plug is an ordinary wire, so Save writes it like any other.
+ */
+function rewire(before: Wire[]) {
+  const key = (w: Wire) => [...w].sort().join(" ");
+  const after = plugs();
+  const now = new Set(after.map(key));
+  const apart = new Set(before.map(key).filter((k) => !now.has(k)));
+  const have = new Set(circuit.wires.map(key));
+  const added = after.filter((w) => !have.has(key(w)));
+  const kept = circuit.wires.filter((w) => !apart.has(key(w)));
+  const out = circuit.wires.length - kept.length;
+  if (!added.length && !out) return undefined;
+  return {
+    wires: [...kept, ...added],
+    text: `${added.length} in, ${out} out`,
+  };
+}
+
+/** After `part` moved: if its move plugged or unplugged pins, applies that and restarts. */
+function replug(part: CircuitPart, before: Wire[]) {
+  const plugged = rewire(before);
+  if (!plugged) return;
+  void change(() => {
+    circuit.wires = plugged.wires;
+    return `moved ${part.id} (${plugged.text})`;
+  }).then(() =>
+    document.querySelector<HTMLElement>(`[data-part="${part.id}"]`)?.focus(),
+  );
 }
 
 /** Asks in the page, then removes the part and its wires. */
@@ -356,8 +618,13 @@ async function add(type: string, at?: { x: number; y: number }) {
     for (let n = 1; !id || circuit.parts.some((p) => p.id === id); n++)
       id = `${base}${n}`;
     const pos = at ? { x: snap(at.x), y: snap(at.y) } : free();
-    circuit.parts.push({ id, type, props: {}, pos });
-    return `added ${id}`;
+    const part: CircuitPart = { id, type, props: {}, pos };
+    circuit.parts.push(part);
+    // Dropped on a breadboard: into its holes.
+    part.pos = (at && seat(part)) || pos;
+    const plugged = rewire([]);
+    if (plugged) circuit.wires = plugged.wires;
+    return plugged ? `added ${id} (${plugged.text})` : `added ${id}`;
   });
   document.querySelector<HTMLElement>(`[data-part="${id}"]`)?.focus();
 }
@@ -417,6 +684,40 @@ function mountEditing() {
     $("palette").append(b);
   }
   const canvas = $("circuit");
+  // Wiring: click (or Enter on) a pin, then another; Escape cancels. The
+  // rubber band follows the pointer, or the pin the keyboard is on.
+  canvas.addEventListener("click", (e) => {
+    const pin = (e.target as Element).closest<HTMLElement>(".pin-target");
+    if (pin) pick(pin);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (pending === undefined) return;
+    const r = canvas.getBoundingClientRect();
+    band({
+      x: (e.clientX - r.left) / zoom(),
+      y: (e.clientY - r.top) / zoom(),
+    });
+  });
+  canvas.addEventListener("focusin", (e) => {
+    const pin = (e.target as Element).closest<HTMLElement>(".pin-target");
+    if (pin && pending !== undefined) band(spot(pin.dataset.endpoint!));
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || pending === undefined) return;
+    stop();
+    note("wiring cancelled");
+  });
+  // A focused wire: Delete removes it.
+  canvas.addEventListener("keydown", (e) => {
+    const g = (e.target as Element).closest<SVGGElement>(".wire");
+    if (!g || (e.key !== "Delete" && e.key !== "Backspace")) return;
+    e.preventDefault();
+    const wire = circuit.wires[Number(g.dataset.wire)];
+    void change(() => {
+      circuit.wires = circuit.wires.filter((w) => w !== wire);
+      return `removed the wire ${wire[0]} to ${wire[1]}`;
+    }).then(() => canvas.focus());
+  });
   canvas.addEventListener("dragover", (e) => {
     if (e.dataTransfer!.types.includes(PART_TYPE)) e.preventDefault();
   });
@@ -443,6 +744,51 @@ function mountEditing() {
       note(`not saved: ${(e as Error).message}`);
     }
   });
+}
+
+/**
+ * A pin clicked: the first starts a wire, the second ends it and restarts the
+ * simulation with the wire appended (so the file's wire order stays as it was).
+ * The same pin again cancels.
+ */
+function pick(pin: HTMLElement) {
+  const endpoint = pin.dataset.endpoint!;
+  const from = pending;
+  if (from === undefined) {
+    pending = endpoint;
+    pin.classList.add("from");
+    $("circuit").dataset.wiring = "";
+    line($("circuit").querySelector(".band")!, spot(endpoint)!);
+    note(`wiring from ${endpoint}: pick the other pin, or Escape`);
+    return;
+  }
+  stop();
+  if (from === endpoint) return note("wiring cancelled");
+  if (circuit.wires.some((w) => w.includes(from) && w.includes(endpoint)))
+    return note(`${from} and ${endpoint} are already wired`);
+  void change(() => {
+    circuit.wires.push([from, endpoint]);
+    return `wired ${from} to ${endpoint}`;
+  }).then(() =>
+    document
+      .querySelector<HTMLElement>(`[data-endpoint="${endpoint}"]`)
+      ?.focus(),
+  );
+}
+
+/** Ends drawing a wire, if one is being drawn. */
+function stop() {
+  pending = undefined;
+  delete $("circuit").dataset.wiring;
+  document.querySelector(".pin-target.from")?.classList.remove("from");
+}
+
+/** Moves the free end of the rubber band. */
+function band(to: { x: number; y: number } | undefined) {
+  const l = $("circuit").querySelector(".band");
+  if (!l || !to) return;
+  l.setAttribute("x2", String(to.x));
+  l.setAttribute("y2", String(to.y));
 }
 
 /** Says what an edit or save did, in the header. */

@@ -114,11 +114,13 @@ test("dragging and the arrow keys move a part on the 0.1 in grid; Save writes po
   assert.equal(before.temp, "0px 94.08px");
 
   // 144 × 72 screen px is 96 × 48 CSS px at zoom 1.5: io goes from (160,
-  // 94.08) to (256, 142.08), snapped to (259.2, 144).
+  // 94.08) to (256, 142.08), snapped to (259.2, 144). Held by its middle:
+  // its edges are pins (T32).
   const box = (await page.locator('[data-part="io"]').boundingBox())!;
-  await page.mouse.move(box.x + 10, box.y + 10);
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(mid.x, mid.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + 154, box.y + 82, { steps: 5 });
+  await page.mouse.move(mid.x + 144, mid.y + 72, { steps: 5 });
   await page.mouse.up();
   // One grid step per arrow key, from the grid.
   await page.locator('[data-part="temp"]').focus();

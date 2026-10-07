@@ -3,6 +3,7 @@
 // Units: 1 SVG unit = 0.01 in (0.254 mm), so the 0.1 in header and breadboard
 // pitch is 10 units. wokwi-elements pinInfo is in CSS px (0.1 in = 9.6 px):
 // scale our art by 0.96 to put both on the same grid.
+import { breadboard } from "./breadboard.ts";
 import { dip28 } from "./dip28.ts";
 import { tc74 } from "./to220-5.ts";
 
@@ -34,6 +35,7 @@ const MCP23017_PINS = [
 
 /** Art by part type, for parts wokwi-elements doesn't cover. Pin keys are the part's pin names. */
 export const partArt: Readonly<Record<string, Art>> = {
+  breadboard,
   tc74,
   mcp23017: dip28("MCP23017", MCP23017_PINS),
 };
