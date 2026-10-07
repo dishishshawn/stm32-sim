@@ -248,6 +248,8 @@ T39, T40 and T41 run in parallel.
 | T34 | Register view with named bits                                                                | M    | T4, T30            |
 | T35 | I2C trace panel and diagnostics panel                                                        | M    | T25, T30           |
 | T36 | Pause, resume and step with the current source line; speed toggle                            | M    | T6, T12, T30       |
+| T43 | Edit a part's props in the UI (variant, common anode/cathode, ...) | S | T32 |
+| T44 | Breadboard: one tab stop, arrow-key seating, carry parts when moved | S | T32 |
 
 **Checkpoint 5.**
 

@@ -789,10 +789,10 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T32: Wires and breadboard connectivity
 
-- [ ] Draw wires pin to pin; they're saved as `wires`.
-- [ ] Each breadboard row is internally one net, and the rails are nets. A part
+- [x] Draw wires pin to pin; they're saved as `wires`.
+- [x] Each breadboard row is internally one net, and the rails are nets. A part
       plugged into a row joins that net.
-- [ ] A UI test rebuilds the thermometer circuit, and the run matches T21.
+- [x] A UI test rebuilds the thermometer circuit, and the run matches T21.
 
 **Verify:** a UI test. **Blocked by:** T31. **Wave 8.** **Size:** M.
 
@@ -833,6 +833,29 @@ alongside all of Phases 1–4. **Size:** M.
 
 **Verify:** a UI test that steps blink and sees the line change. **Blocked by:** T6,
 T12, T30. **Wave 7.** **Size:** M.
+
+### T43: Edit a part's props in the UI
+
+T32 found the page can't set a part's props, so its thermometer test had to start
+with the TC74 (variant A0) and two common-cathode displays already placed.
+
+- [ ] Selecting a part shows its props in a small form generated from each prop's
+      `PropSpec`: a select for `options`, a number input with min/max, a checkbox for
+      booleans. Changing one goes through `change()` (the simulation restarts) and is
+      saved with the circuit.
+- [ ] Test: add a TC74 from the palette, set variant A0, and the firmware reads it at
+      0x48; add a 7-segment display and switch it to common anode.
+
+**Verify:** a UI test. **Blocked by:** T32. **Size:** S.
+
+### T44: Breadboard keyboard use and moving
+
+- [ ] A breadboard is one tab stop, and the arrow keys move between its holes (roving
+      tabindex). Today it is 400 tab stops.
+- [ ] Moving a part with the arrow keys seats it in holes as dropping it does.
+- [ ] Moving a breadboard carries the parts plugged into it.
+
+**Verify:** a UI test. **Blocked by:** T32. **Size:** S.
 
 **Checkpoint 5:** see `plan.md`.
 
