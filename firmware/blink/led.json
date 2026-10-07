@@ -1,0 +1,22 @@
+{
+  "chip": "stm32g031k8",
+  "parts": [
+    {
+      "id": "r1",
+      "type": "resistor",
+      "props": {
+        "ohms": 330
+      }
+    },
+    {
+      "id": "led1",
+      "type": "led",
+      "props": {}
+    }
+  ],
+  "wires": [
+    ["mcu.PA0", "r1.1"],
+    ["r1.2", "led1.A"],
+    ["led1.C", "GND"]
+  ]
+}
