@@ -780,8 +780,8 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T31: Place and move parts; save the circuit JSON
 
-- [ ] Drag parts from a palette and move them; positions go into `pos`.
-- [ ] Saving writes JSON in the same stable format as T5. Loading and then saving an
+- [x] Drag parts from a palette and move them; positions go into `pos`.
+- [x] Saving writes JSON in the same stable format as T5. Loading and then saving an
       unchanged circuit is byte-identical.
 
 **Verify:** a UI test plus the round-trip test. **Blocked by:** T30. **Wave 7.**
@@ -798,11 +798,11 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T33: `sim watch`
 
-- [ ] `sim watch <elf> --circuit <json>` re-runs when the ELF changes; headless, it
+- [x] `sim watch <elf> --circuit <json>` re-runs when the ELF changes; headless, it
       prints each run's result.
-- [ ] In the UI, the page reloads the firmware, keeping the circuit and resetting the
+- [x] In the UI, the page reloads the firmware, keeping the circuit and resetting the
       MCU.
-- [ ] A test touches the ELF and sees a reload within 1 s.
+- [x] A test touches the ELF and sees a reload within 1 s.
 
 **Verify:** `node --test src/cli/watch.test.ts`. **Blocked by:** T30. **Wave 7.**
 **Size:** M.
@@ -817,8 +817,8 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T35: I2C trace panel and diagnostics panel
 
-- [ ] The trace panel lists START, ADDR+R/W, ACK/NACK, DATA and STOP, timestamped.
-- [ ] The diagnostics panel shows the same diagnostics as the CLI, each linked to its
+- [x] The trace panel lists START, ADDR+R/W, ACK/NACK, DATA and STOP, timestamped.
+- [x] The diagnostics panel shows the same diagnostics as the CLI, each linked to its
       register or bus event.
 
 **Verify:** a UI test with the no-pull-ups fault circuit. **Blocked by:** T25, T30.
@@ -826,10 +826,10 @@ alongside all of Phases 1–4. **Size:** M.
 
 ### T36: Pause, resume and step, with the source line
 
-- [ ] Pause, resume and single-step instructions.
-- [ ] Show the current file:line and the surrounding source, which the server reads
+- [x] Pause, resume and single-step instructions.
+- [x] Show the current file:line and the surrounding source, which the server reads
       from disk.
-- [ ] Toggle between realtime and max speed.
+- [x] Toggle between realtime and max speed.
 
 **Verify:** a UI test that steps blink and sees the line change. **Blocked by:** T6,
 T12, T30. **Wave 7.** **Size:** M.
