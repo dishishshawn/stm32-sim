@@ -614,13 +614,13 @@ T26. **Wave 9.** **Size:** S.
 
 ### T29: SVG art
 
-- [ ] Plain SVG, each with pin coordinates using the pin names from T5:
+- [x] Plain SVG, each with pin coordinates using the pin names from T5:
   - a breadboard with rails;
   - the NUCLEO-G031K8 board, with pinout from UM2591; do not use the unlicensed
     wokwi-boards art;
   - a generic DIP-28 for the MCP23017;
   - a TO-220-5 for the TC74.
-- [ ] A test checks that every pin a part declares has a coordinate in its art.
+- [x] A test checks that every pin a part declares has a coordinate in its art.
 
 **Verify:** `node --test 'src/ui/art/**/*.test.ts'`. **Blocked by:** T5. **Wave 2**; can run
 alongside all of Phases 1–4. **Size:** M.
