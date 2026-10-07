@@ -52,11 +52,13 @@ peripheral ships with a headless test next to it (`x.ts` → `x.test.ts`), which
 - **Peripheral:** `src/peripherals/<name>.ts`, registered in the chip definition's
   `peripherals` list (`src/chips/stm32g031k8.ts`). The interface is
   `src/peripherals/peripheral.ts`. The file holds behavior only; registers and reset
-  values come from `src/chips/stm32g031k8.registers.json`. Recipe
-  (`docs/adding-a-peripheral.md`) and templates: coming with T27.
+  values come from `src/chips/stm32g031k8.registers.json`. Recipe:
+  `docs/adding-a-peripheral.md`, with I2C1 as the worked example. Templates:
+  `templates/peripheral.ts` (TIM14's time base) and `templates/peripheral.test.ts`.
 - **Diagnostic rule:** `src/diagnostics/<name>.ts`, registered in
-  `src/diagnostics/index.ts`. The interface is `src/diagnostics/rule.ts`. Recipe and
-  templates: coming with T27.
+  `src/diagnostics/index.ts`. The interface is `src/diagnostics/rule.ts`. Recipe:
+  `docs/adding-a-diagnostic.md`, with `timingr-while-pe` as the worked example.
+  Templates: `templates/diagnostic.ts` and `templates/diagnostic.test.ts`.
 
 The templates are not registered. Their tests mount them directly and run in
 `just test`, so they can't go stale.
