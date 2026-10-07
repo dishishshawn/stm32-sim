@@ -1,0 +1,19 @@
+{
+  "chip": "stm32g031k8",
+  "parts": [
+    {
+      "id": "temp",
+      "type": "tc74",
+      "props": {
+        "temperature": 22,
+        "variant": "A0"
+      }
+    }
+  ],
+  "wires": [
+    ["mcu.PB6", "temp.SCLK"],
+    ["mcu.PB7", "temp.SDA"],
+    ["temp.VDD", "3V3"],
+    ["temp.GND", "GND"]
+  ]
+}

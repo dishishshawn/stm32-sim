@@ -1,7 +1,8 @@
-# Builds each firmware/<name>/main.c into build/<name>.elf at the repo root.
+# Builds each firmware/<name>/main.c into build/<name>.elf at the repo root, and
+# each firmware/<group>/<name>/main.c into build/<group>/<name>.elf.
 #
 #   make -C firmware          every program
-#   make -C firmware blink    one program
+#   make -C firmware blink    one program (or faults/gpio-clock)
 #   make -C firmware clean
 #
 # `just fw` runs the first one.
@@ -26,7 +27,7 @@ LDFLAGS := -T stm32g031k8.ld --specs=nano.specs -Wl,--gc-sections
 # Linked into every program: the vector table and reset code, and SystemInit.
 COMMON := $(DEVICE)/startup_stm32g031xx.s $(DEVICE)/system_stm32g0xx.c
 
-PROGRAMS := $(patsubst %/main.c,%,$(wildcard */main.c))
+PROGRAMS := $(patsubst %/main.c,%,$(wildcard */main.c */*/main.c))
 
 all: $(PROGRAMS) ../compile_commands.json
 
@@ -37,13 +38,13 @@ $(PROGRAMS): %: $(BUILD)/%.elf
 # ...), so they are listed with -isystem, taken from gcc's own search path.
 SYSINC := $(shell $(CC) -xc -E -Wp,-v /dev/null 2>&1 | sed -n 's|^ \(/.*\)|-isystem \1|p')
 
-../compile_commands.json: Makefile $(wildcard */main.c)
+../compile_commands.json: Makefile $(PROGRAMS:%=%/main.c)
 	@{ echo '['; for f in $(PROGRAMS:%=%/main.c) $(DEVICE)/system_stm32g0xx.c; do \
 	  echo "  {\"directory\": \"$(CURDIR)\", \"file\": \"$$f\", \"command\": \"$(CC) $(CFLAGS) $(SYSINC) -c $$f\"},"; \
 	done; } | sed '$$ s/,$$//' > $@ && echo ']' >> $@
 
 $(BUILD)/%.elf: %/main.c $(COMMON) stm32g031k8.ld
-	@mkdir -p $(BUILD)
+	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(COMMON)
 
 clean:
