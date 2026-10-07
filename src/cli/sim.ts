@@ -16,6 +16,7 @@ import type { Circuit } from "../engine/circuit.ts";
 import { catalog, Engine, propSpec } from "../engine/engine.ts";
 import type { Snapshot } from "../engine/engine.ts";
 import type { I2cTraceEvent } from "../engine/events.ts";
+import { i2cText } from "../engine/i2c.ts";
 import type { Chip } from "../engine/memory-bus.ts";
 import { propError } from "../parts/part.ts";
 import type { PropSpec, PropValue } from "../parts/part.ts";
@@ -302,7 +303,7 @@ function main(argv: string[], once = false): number {
     out.push(
       `i2c${i2c.length ? "" : "          (none)"}`,
       ...i2c.map(
-        (e) => `  ${engine.secondsAt(e.cycle).toFixed(6)} s  ${i2cText(e)}`,
+        (e) => `  ${engine.secondsAt(e.cycle).toFixed(6)} s  ${i2cText(e.step)}`,
       ),
       `unsimulated${unsimulated.size || notSimulated.size ? "" : "  (none)"}`,
       ...[...unsimulated.values()].map(
@@ -450,15 +451,6 @@ function readInput(elfPath: string, circuitPath: string | undefined) {
       )
     : { chip: Object.keys(chips)[0], parts: [], wires: [] };
   return { elf, circuit };
-}
-
-/** One I2C trace step: "START", "ADDR 0x48 W  ACK", "DATA 0x16 R  NACK", "STOP". */
-function i2cText(e: I2cTraceEvent): string {
-  const s = e.step;
-  if (s.kind === "start" || s.kind === "stop") return s.kind.toUpperCase();
-  const [what, byte] = s.kind === "addr" ? ["ADDR", s.addr] : ["DATA", s.byte];
-  const hex2 = byte.toString(16).padStart(2, "0");
-  return `${what} 0x${hex2} ${s.read ? "R" : "W"}  ${s.ack.toUpperCase()}`;
 }
 
 /** "2s", "1.5s", "100ms", "500us" in seconds. */
