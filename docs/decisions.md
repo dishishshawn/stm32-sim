@@ -353,6 +353,32 @@ templates and our own `firmware/stm32g031k8.ld`.
 **On the development laptop:** 14.2.1, installed in T0 by `~/install-remaining.sh`
 (apt, needs sudo).
 
+## 7. I2C at the transaction level, with line levels from the nets
+
+**Decision (T13).** `src/engine/i2c.ts` simulates I2C one step at a time (START,
+address, byte, STOP), not by toggling SDA and SCL bit by bit. The nets are still
+the truth for the lines: the controller starts only if `isIdle()` sees both lines
+resolve high, and a target is on the bus only if its SDA and SCL pins are on the
+bus's nets (`Nets.sameNet`).
+
+**Why.** Every I2C fault the brief lists shows at this level: no pull-ups (the lines
+float, so never idle), a line held low, pins not routed to I2C1, a wrong address,
+and RESET floating (the target answers no address). Bit-level simulation would cost
+dozens of net resolutions per byte and show a learner nothing more.
+
+**Assumed** (wired open-drain behavior, not from a datasheet):
+
+- Targets that share an address all take every write, and the bus ACKs if any of
+  them ACKs. A read returns the AND of their bytes.
+- With no target selected (after a NACK), a read returns `0xFF`: nothing pulls SDA
+  low.
+- START and STOP reach every target on the bus, addressed or not.
+
+**Not simulated:** the bus never drives the nets during a transaction, so a line
+pulled low mid-transaction goes unseen. There is no arbitration loss (ARLO) and no
+clock stretching. I2C bit-banged on GPIO pins reaches no target. Revisit with bit-level
+simulation if a part or a lesson needs one of these.
+
 ## Open, deferred to the build step that needs them
 
 - **Step 7, UI:** the bundler or import map for Lit and `@wokwi/elements`, and
