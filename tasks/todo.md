@@ -239,10 +239,10 @@ definition list. **Size:** M.
 
 ### T9: Engine run loop and blink end-to-end test
 
-- [ ] Extend the T7 `Peripheral` contract, as the T7 review agreed: `tick?(cycles)` on
+- [x] Extend the T7 `Peripheral` contract, as the T7 review agreed: `tick?(cycles)` on
       `PeripheralInstance`; `now()` (cycles) and `cpu.setPending(exception)` on
       `PeripheralContext`. The engine wires them through the `MemoryBus` options.
-- [ ] `src/engine/engine.ts`:
+- [x] `src/engine/engine.ts`:
   - `load(elf, circuit)`, then reset: SP and PC from the vector table. Build a fresh
     core on each load: upstream `reset()` doesn't clear lockup, IPSR or the mode
     (T11 finding). Copy each
@@ -254,9 +254,9 @@ definition list. **Size:** M.
   - time comes from cycles at 16 MHz, and peripheral ticks are scheduled by time;
   - create a new `Nets` on every load: listeners can't be removed, so a reused `Nets`
     would keep calling the old bus (T8 finding).
-- [ ] `firmware/blink/circuit.json` (`mcu` only) and an end-to-end test: in 100 ms of
+- [x] `firmware/blink/circuit.json` (`mcu` only) and an end-to-end test: in 100 ms of
       simulated time, the PA0 net toggles the expected number of times.
-- [ ] Determinism: two runs give identical event logs.
+- [x] Determinism: two runs give identical event logs.
 
 **Verify:** `just fw && node --test src/engine/engine.test.ts`. **Blocked by:** T6,
 T8, and T0 to run locally. **Wave 4.** **Files:** `engine.ts`, `engine.test.ts`,
@@ -270,6 +270,8 @@ T8, and T0 to run locally. **Wave 4.** **Files:** `engine.ts`, `engine.test.ts`,
     named bits, the PC as file:line, the I2C trace (empty until T14), diagnostics
     (empty until T24), and unsimulated-register accesses;
   - every command takes `--json`, whose output carries `"version": 1`.
+- [ ] Route the core's logger (HardFault and lockup messages, which T9 still prints to
+      the console) into the run result: the text output and `--json`, not stray stderr.
 - [ ] Exit codes:
 
   | Code | Meaning                  |
@@ -324,7 +326,8 @@ with the rest of Phase 1. **Files:** `src/cpu/cortex-m0-core.ts`, its test.
   - CALIB;
   - TICKINT pends the SysTick exception in the core.
 
-  Add the SCB bits that needs (ICSR PENDST, SHPR3). T4 found that the SVD has no SysTick, NVIC or SCB, so hand-write them from the
+  The NVIC and SCB still read 0 and ignore writes (T9). The SysTick exception doesn't
+  need the NVIC: TICKINT plus `cpu.setPending` is enough. Add the SCB bits that needs (ICSR PENDST, SHPR3). T4 found that the SVD has no SysTick, NVIC or SCB, so hand-write them from the
   ARMv6-M architecture manual.
 
 - [ ] The engine has two speeds:
@@ -373,6 +376,8 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
   APBENR1.I2C1EN gates I2C1 through the bus. Using RELOAD or 10-bit addressing is
   logged as not simulated. The time per byte comes from TIMINGR (approximate).
 
+- [ ] Give I2C1 the engine's mounted part instances, for `I2cBus`'s `parts`: add them to
+      `PeripheralContext` through the `MemoryBus` options (T9 finding).
 - [ ] Pin routing through AF endpoints (agreed at the T8 merge). `Nets` keeps one
       drive per endpoint, so I2C1 must not share `mcu.PB6`/`mcu.PB7` with GPIO.
   - I2C1 owns `mcu.I2C1_SCL` and `mcu.I2C1_SDA`, and its `I2cBus` sits on those.
