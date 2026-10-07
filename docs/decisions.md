@@ -565,6 +565,13 @@ driven (`mcu.PB12` stays unconnected).
   until the PC is moved.
 - **Net changes are events** (`kind: "net"`, with the cycle, endpoint and level), so
   tests and the UI see pins change without polling.
+- **Mid-run inputs** (T20): `setPropAt(seconds, part, prop, value)` checks the
+  value with `propError` and queues it by cycle. It goes to the part's `setProp`
+  at the first instruction boundary at or past that cycle (after that step's
+  ticks), and a WFI sleep slice ends there too, so a change lands on time even
+  inside one `runFor`. Same cycle: in the order scheduled. The CLI's `--set`
+  edits the circuit's props before `load` instead, so it covers props a part
+  only reads in `create()` (a TC74's `variant`).
 - **The snapshot** has the PC as `file:line` (else `function+0xoffset`, else the
   address), each package pin's level, every register's _stored_ value (so taking it
   has no read side effects), `cycles` and `seconds`, `halt` (`lockup` or `breakpoint`

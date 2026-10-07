@@ -1,0 +1,19 @@
+{
+  "chip": "stm32g031k8",
+  "parts": [
+    {
+      "id": "temp",
+      "type": "tc74",
+      "props": {}
+    },
+    {
+      "id": "btn",
+      "type": "pushbutton",
+      "props": {}
+    }
+  ],
+  "wires": [
+    ["btn.1.l", "mcu.PA1"],
+    ["btn.2.l", "GND"]
+  ]
+}
