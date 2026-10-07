@@ -373,7 +373,7 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
 
 ### T14: I2C1 peripheral (v2 master)
 
-- [ ] Registers:
+- [x] Registers:
   - CR1.PE;
   - CR2: SADD (7-bit), RD_WRN, NBYTES, START, STOP, AUTOEND;
   - ISR: TXE, TXIS, RXNE, NACKF, STOPF, TC, BERR, ARLO, BUSY;
@@ -383,9 +383,9 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
   APBENR1.I2C1EN gates I2C1 through the bus. Using RELOAD or 10-bit addressing is
   logged as not simulated. The time per byte comes from TIMINGR (approximate).
 
-- [ ] Give I2C1 the engine's mounted part instances, for `I2cBus`'s `parts`: add them to
+- [x] Give I2C1 the engine's mounted part instances, for `I2cBus`'s `parts`: add them to
       `PeripheralContext` through the `MemoryBus` options (T9 finding).
-- [ ] Pin routing through AF endpoints (agreed at the T8 merge). `Nets` keeps one
+- [x] Pin routing through AF endpoints (agreed at the T8 merge). `Nets` keeps one
       drive per endpoint, so I2C1 must not share `mcu.PB6`/`mcu.PB7` with GPIO.
   - I2C1 owns `mcu.I2C1_SCL` and `mcu.I2C1_SDA`, and its `I2cBus` sits on those.
   - GPIO joins a pin to an AF endpoint with a switch while the pin is in AF mode with
@@ -396,7 +396,7 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
     the pin.
   - A bus that isn't idle sets BUSY, and START never goes out. Anything RM0444
     doesn't specify is marked "assumed".
-- [ ] Tests against a fake target:
+- [x] Tests against a fake target:
   - a 1-byte write with AUTOEND gives the trace and the flag order TXIS → STOPF;
   - a 2-byte read;
   - NACK sets NACKF and sends STOP;
@@ -404,6 +404,9 @@ T9. **Wave 5.** **Files:** `systick.ts`, `scb.ts`, tests, firmware. **Size:** M.
   - BUSY when the lines are held low or have no pull-ups;
   - with I2C1EN = 0, writes are ignored.
 
+- [ ] Follow-up: I2C1 interrupts aren't raised (no NVIC model yet). BERR and ARLO are never
+      set (no arbitration in the bus model). RELOAD and ADD10 are logged as unsimulated and
+      run as if 0. The AF table also maps PB8/PB9 and PA9/PA10 to I2C1 (DS12992 Tables 13–14).
 **Verify:** `node --test src/peripherals/i2c.test.ts`. **Blocked by:** T8, T9, T13.
 **Wave 5.** **Files:** `i2c.ts`, `i2c.test.ts`, the chip list. **Size:** L. If it
 runs long, split the read path into a follow-up task.
