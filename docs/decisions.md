@@ -415,6 +415,7 @@ dozens of net resolutions per byte and show a learner nothing more.
 pulled low mid-transaction goes unseen. There is no arbitration loss (ARLO) and no
 clock stretching. I2C bit-banged on GPIO pins reaches no target. Revisit with bit-level
 simulation if a part or a lesson needs one of these.
+
 ## 8. Memory bus, peripherals and events (T7)
 
 `src/engine/memory-bus.ts`, `src/peripherals/peripheral.ts`, `src/engine/events.ts`.
@@ -459,6 +460,63 @@ against the PDF.
   Flash and SRAM accesses aren't events, except ignored flash writes. The card's
   `{t, …, new}` became `{cycle, …, op, value}`, plus `address`, so reserved and SCS
   accesses, which have no register name, can still be located.
+
+## 9. RCC and GPIO (T8)
+
+`src/peripherals/rcc.ts`, `src/peripherals/gpio.ts`. RM0444 wasn't available
+(`docs/reference/` doesn't exist yet), so RM0444 points are **assumed** as in §8.
+
+**Contract additions** (agreed at the T7 gate):
+
+- `PeripheralContext.nets: Nets`, and `regsOf(name): Readonly<Registers>`, the live
+  registers of another peripheral. An unknown name throws.
+- `MemoryBusOptions.nets: Nets` (required), handed to every peripheral.
+- `Chip.pins: readonly string[]`: the package's I/O pins, so circuit JSON can check
+  `mcu.<pin>`. For the G031K8 they are PA0–PA15, PB0–PB9, PC6, PC14, PC15 and PF2, from
+  embassy-rs/stm32-data-generated `data/chips/STM32G031K8.json` (MIT/Apache-2.0); the
+  LQFP32 and UFQFPN32 pinouts are the same. Package pins 22 and 23 are PA11 and PA12;
+  the SYSCFG remap to PA9 and PA10 isn't simulated. PF2 is also NRST. PC and PF pins
+  can be wired, but nothing drives them until GPIOC/GPIOF exist.
+
+**RCC.** Gating already worked from the stored IOPENR/APBENR1 values (§8), so the
+only behavior is in `RCC_CR`. The SVD's reset value, `0x63`, has HSION and HSIRDY at
+0, so `while (!(RCC->CR & RCC_CR_HSIRDY));` would hang although the core runs from
+HSI16. **Assumed** (RM0444 §5.4.1): CR resets to `0x0000_0500`. HSION and HSIRDY then
+stay 1, since HSI16 is the system clock. HSERDY and PLLRDY stay 0: HSE and the PLL
+aren't simulated, so firmware waiting for them stops there, visibly, instead of
+running at a clock the simulator doesn't model. HSIDIV and CFGR are plain storage;
+the core stays at 16 MHz.
+
+**GPIO.** One `gpio(name, gate, pins)` for every port. Only pins on the package are
+driven (`mcu.PB12` stays unconnected).
+
+| MODER       | Drive on `mcu.<pin>`                                                     |
+| ----------- | ------------------------------------------------------------------------ |
+| output (01) | push-pull: `high`/`low` from ODR. Open-drain: `low`, or the pull for a 1 |
+| input (00)  | the PUPDR pull: `pull-up`, `pull-down`, or `hi-z`                        |
+| AF (10)     | the PUPDR pull. The peripheral that owns the pin drives it itself        |
+| analog (11) | `hi-z`, with the pulls disconnected                                      |
+
+- **IDR** is stored, and kept current by a nets listener and on every config write,
+  so the register view and `regsOf` see the same value as the CPU. A pin reads 1
+  only when its net is `high`. **Assumed:** `floating` and `conflict` read 0. Real
+  hardware is unpredictable there; 0 is deterministic, and a diagnostic should flag a
+  floating input rather than the model guessing. An analog-mode pin reads 0 (its
+  Schmitt trigger is off; standard STM32 behavior, **assumed** for RM0444).
+- **PUPDR 11** (reserved) pulls neither way (**assumed**).
+- **BSRR**: set wins when a pin's set and reset bits are both written. BSRR and BRR
+  act on ODR and read 0. IDR ignores writes.
+- **AF ownership.** Nets hold one drive per endpoint, and an AF peripheral (I2C1 in
+  T14) drives the same `mcu.<pin>` through `ctx.nets`. So GPIO re-drives a pin only
+  when its own drive for that pin changes; writes for other pins leave it alone.
+  `alternateFunction(regsOf("GPIOB"), 6)` gives a pin's AF number, or undefined
+  outside AF mode. An AF peripheral that releases a line should put back the PUPDR
+  pull, because its drive replaced GPIO's.
+- Not simulated: LCKR (plain storage, so locking does nothing), OSPEEDR (no digital
+  effect), IOPRSTR port resets.
+- Registering a peripheral marks all its registers simulated, so RCC's PLLCFGR, for
+  example, is no longer flagged `unsimulated`. Revisit with a per-register flag if a
+  diagnostic needs it.
 
 ## Open, deferred to the build step that needs them
 
