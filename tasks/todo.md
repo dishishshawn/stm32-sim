@@ -236,7 +236,10 @@ definition list. **Size:** M.
 ### T9: Engine run loop and blink end-to-end test
 
 - [ ] `src/engine/engine.ts`:
-  - `load(elf, circuit)`, then reset: SP and PC from the vector table;
+  - `load(elf, circuit)`, then reset: SP and PC from the vector table. Copy each
+    segment's `data` to its `addr` (the LMA). **Don't zero-fill `memSize` there:**
+    `.data` and `.bss` can share a segment, so that would write zeros into flash
+    past the image. The startup code zeroes `.bss` in RAM (T6 finding);
   - `runFor(simTime)`, `step()` and `snapshot()`, which reports pins, registers, the
     PC as file:line, and halt/fault state;
   - time comes from cycles at 16 MHz, and peripheral ticks are scheduled by time.
