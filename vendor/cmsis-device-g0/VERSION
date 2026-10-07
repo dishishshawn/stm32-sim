@@ -1,0 +1,15 @@
+STMicroelectronics cmsis-device-g0 (STM32CubeG0 CMSIS Device component)
+Source:     https://github.com/STMicroelectronics/cmsis-device-g0
+Tag:        v1.4.5
+Commit:     f576c24e123edf3332988ecd49512c0f35f85186
+Downloaded: 2026-10-07
+License:    Apache-2.0 (LICENSE, upstream's LICENSE.md renamed)
+
+Files, copied unmodified from upstream:
+  Include/stm32g0xx.h
+  Include/stm32g031xx.h
+  Include/system_stm32g0xx.h
+  Source/Templates/gcc/startup_stm32g031xx.s
+  Source/Templates/system_stm32g0xx.c
+
+Needs the Arm CMSIS-Core headers in ../cmsis-core.

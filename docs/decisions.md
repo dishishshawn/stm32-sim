@@ -215,6 +215,17 @@ documentation for this chip is 2964 of 3456 fields.
 - the Arm CMSIS-Core headers it includes (`core_cm0plus.h`, Apache-2.0);
 - each with its license file next to it.
 
+Done in T3; `vendor/*/VERSION` records the tag, commit and files.
+
+- CMSIS-Core is CMSIS_5 tag **5.6.0** (CMSIS-Core(M) 5.3.0). The device repo's README
+  defers to the STM32CubeG0 release notes, and STM32CubeG0 v1.6.3 pairs "STM32G0xx
+  CMSIS V1.4.5" with "CMSIS V5.6.0_cm0".
+- Only the headers GCC reaches are vendored: `core_cm0plus.h`, `cmsis_version.h`,
+  `cmsis_compiler.h`, `cmsis_gcc.h`, and `mpu_armv7.h` (the G031 sets
+  `__MPU_PRESENT 1`). The Arm/IAR compiler headers are left out.
+- The files sit flat in each directory, unmodified. Upstream's `LICENSE.md` /
+  `LICENSE.txt` is renamed `LICENSE`.
+
 The device header has bit masks but **no reset values**, so it can't replace the SVD.
 
 **Not yet checked.** The core peripherals (SysTick, NVIC, SCB) are defined by the
@@ -256,8 +267,20 @@ packages (`elfy`, `elf-tools`, `elfinfo`) don't parse DWARF at all.
 - CPU instruction tests use hand-assembled opcodes, as the rp2040js tests do, so they
   run without the toolchain. Only the firmware-level tests need it.
 
-**Not installed on the development laptop yet.** `~/install-remaining.sh` installs it
-through apt, which needs sudo.
+**Build settings (T3).** `firmware/Makefile` builds each `firmware/<name>/main.c`
+into `build/<name>.elf`, linked with ST's gcc startup and `system_stm32g0xx.c`
+templates and our own `firmware/stm32g031k8.ld`.
+
+- `-Og`: optimised, but still easy to follow line by line, which stepping and
+  PC → file:line need. `-g` gives DWARF 5 with GCC 14.
+- `--specs=nano.specs` only. ST's startup calls `__libc_init_array`, so newlib is
+  needed, but blink makes no system calls. `nosys.specs` would only add "not
+  implemented" linker warnings. A program that uses `printf` or `malloc` adds it.
+- CI names `libnewlib-arm-none-eabi` explicitly: `gcc-arm-none-eabi` only
+  Recommends it, and `nano.specs` comes from it.
+
+**On the development laptop:** 14.2.1, installed in T0 by `~/install-remaining.sh`
+(apt, needs sudo).
 
 ## Open, deferred to the build step that needs them
 
