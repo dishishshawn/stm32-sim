@@ -8,6 +8,9 @@
 //   inherited whole only when the element has none;
 // - dim arrays on registers, clusters and fields (`%s` names);
 // - one level of cluster, flattened to `<cluster>_<register>` (DMA1 `CH1_CR`).
+//
+// Field names follow ST's CMSIS device header, the names learners type in C
+// (RCC_IOPENR_GPIOBEN, not the SVD's IOPBEN): see cmsisNames.
 import { readFileSync, writeFileSync } from "node:fs";
 import { DOMParser, onWarningStopParsing } from "@xmldom/xmldom";
 import type { Element } from "@xmldom/xmldom";
@@ -20,12 +23,17 @@ export const JSON_PATH = new URL(
   "../src/chips/stm32g031k8.registers.json",
   import.meta.url,
 );
+export const HEADER_PATH = new URL(
+  "../vendor/cmsis-device-g0/stm32g031xx.h",
+  import.meta.url,
+);
 
 type Field = {
   bitOffset: number;
   bitWidth: number;
   access: string;
   description: string;
+  svdName?: string;
 };
 type Register = {
   offset: string;
@@ -93,7 +101,85 @@ function instances(el: Element, derivedDescription: string | undefined) {
   }));
 }
 
-export function svd2json(xml: string): string {
+// A lookup of each field's name in the CMSIS device header, or undefined when
+// the header has no match. The peripheral's instance and TYPE come from the
+// header's `#define GPIOB ((GPIO_TypeDef *) GPIOB_BASE)`, matched on base
+// address. A field matches `<TYPE>_<REG>_<NAME>_Pos` (or `<INSTANCE>_…`, as in
+// TIM1_AF1) when the _Pos is its bit offset and the _Msk its width. The SVD
+// name wins if the header has it too (I2C OA2MSK is also OA2MASK07); any other
+// tie throws.
+function cmsisNames(header: string) {
+  const defs = new Map<string, string>();
+  for (const m of header.matchAll(/^#define\s+(\w+)\s+(.+?)\s*(\/\*.*)?$/gm)) {
+    defs.set(m[1], m[2]);
+  }
+  // A base address: `(APBPERIPH_BASE + 0x00005400UL)` and the like.
+  const value = (expr: string): number =>
+    expr
+      .replace(/[()]/g, "")
+      .split("+")
+      .reduce(
+        (sum, t) =>
+          sum + (/^\s*\d/.test(t) ? parseInt(t) : value(defs.get(t.trim())!)),
+        0,
+      );
+  const instances = new Map<number, { name: string; type: string }>();
+  for (const m of header.matchAll(
+    /^#define\s+(\w+)\s+\(\((\w+?)_TypeDef \*\)\s*(\w+)\)/gm,
+  )) {
+    const at = value(defs.get(m[3])!);
+    // DMAMUX_Channel_TypeDef's macros start DMAMUX_: TYPE ends at the first _.
+    if (!instances.has(at)) {
+      instances.set(at, { name: m[1], type: m[2].split("_")[0] });
+    }
+  }
+  const macros = [
+    ...header.matchAll(/^#define\s+(\w+)_Pos\s+\((\d+)U\)/gm),
+  ].map((m) => ({
+    name: m[1],
+    bitOffset: Number(m[2]),
+    mask: parseInt(/0x\w+/.exec(defs.get(`${m[1]}_Msk`)!)![0]),
+  }));
+  return (base: number, reg: string, svdName: string, f: Field) => {
+    const i = instances.get(base);
+    if (!i) return undefined;
+    const prefixes = [`${i.type}_${reg}_`, `${i.name}_${reg}_`];
+    const names = new Set(
+      macros
+        .filter(
+          (m) => m.bitOffset === f.bitOffset && m.mask === 2 ** f.bitWidth - 1,
+        )
+        .flatMap((m) =>
+          prefixes
+            .filter((p) => m.name.startsWith(p))
+            .map((p) => m.name.slice(p.length)),
+        ),
+    );
+    if (names.has(svdName)) return svdName;
+    if (names.size > 1)
+      throw new Error(`${reg}.${svdName}: CMSIS ${[...names]}`);
+    return [...names][0];
+  };
+}
+
+export function svd2json(xml: string, header: string) {
+  const cmsis = cmsisNames(header);
+  let renamed = 0;
+  let unmatched = 0;
+  // One register's fields under their CMSIS names, keeping svdName if it differs.
+  const rename = (base: number, reg: string, fields: Record<string, Field>) =>
+    keyed(
+      Object.entries(fields).map(([svdName, f]) => {
+        const name = cmsis(base, reg, svdName, f);
+        if (name === undefined) unmatched++;
+        if (name === undefined || name === svdName) {
+          return { name: svdName, ...f };
+        }
+        renamed++;
+        return { name, ...f, svdName };
+      }),
+      ({ name, ...f }) => f,
+    );
   const doc = new DOMParser({ onError: onWarningStopParsing }).parseFromString(
     xml,
     "text/xml",
@@ -221,6 +307,7 @@ export function svd2json(xml: string): string {
   const deviceDefaults = props(device, {});
   const peripherals = allPeripherals
     .map((p) => {
+      const base = num(get(p, "baseAddress")!);
       const regs = registers(
         container(p, "registers")!,
         0,
@@ -229,8 +316,11 @@ export function svd2json(xml: string): string {
       ).sort((a, b) => a.at - b.at || cmp(a.name, b.name));
       return {
         name: own(p, "name")!,
-        at: num(get(p, "baseAddress")!),
-        registers: keyed(regs, ({ name, at, ...r }) => r),
+        at: base,
+        registers: keyed(regs, ({ name, at, ...r }) => ({
+          ...r,
+          fields: rename(base, name, r.fields),
+        })),
       };
     })
     .sort((a, b) => a.at - b.at || cmp(a.name, b.name));
@@ -244,7 +334,7 @@ export function svd2json(xml: string): string {
       registers: p.registers,
     })),
   };
-  return JSON.stringify(out, null, 2) + "\n";
+  return { json: JSON.stringify(out, null, 2) + "\n", renamed, unmatched };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -262,5 +352,13 @@ function keyed<T extends { name: string }, U>(items: T[], f: (t: T) => U) {
 }
 
 if (import.meta.main) {
-  writeFileSync(JSON_PATH, svd2json(readFileSync(SVD_PATH, "utf8")));
+  const { json, renamed, unmatched } = svd2json(
+    readFileSync(SVD_PATH, "utf8"),
+    readFileSync(HEADER_PATH, "utf8"),
+  );
+  writeFileSync(JSON_PATH, json);
+  console.log(
+    `${renamed} fields renamed to their CMSIS name; ` +
+      `${unmatched} with no CMSIS match keep the SVD name`,
+  );
 }

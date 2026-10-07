@@ -37,7 +37,7 @@ function setup(...peripherals: Peripheral[]) {
 
 const plainGpioA: Peripheral = {
   name: "GPIOA",
-  gate: { register: "RCC.IOPENR", field: "IOPAEN" },
+  gate: { register: "RCC.IOPENR", field: "GPIOAEN" },
   create: () => ({}),
 };
 
@@ -203,8 +203,8 @@ test("registration mistakes throw", () => {
     /GPIOA has no register ODRR/,
   );
   assert.throws(
-    bad({ gate: { register: "RCC.IOPENR", field: "GPIOAEN" } }),
-    /clock gate RCC.IOPENR.GPIOAEN/,
+    bad({ gate: { register: "RCC.IOPENR", field: "IOPAEN" } }), // the SVD's name
+    /clock gate RCC.IOPENR.IOPAEN/,
   );
 });
 

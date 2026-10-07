@@ -61,7 +61,7 @@ is one line, `file:line: severity: message [rule]`:
 
 ```
 diagnostics
-  firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.IOPBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
+  firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
 ```
 
 | Rule                   | Severity  | Reports                                                                                         |
@@ -147,7 +147,7 @@ Each diagnostic:
 {
   "rule": "gpio-clock-off",
   "severity": "warning",
-  "message": "wrote GPIOB->ODR while RCC->IOPENR.IOPBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored",
+  "message": "wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored",
   "periph": "GPIOB",
   "reg": "ODR",
   "count": 3,
@@ -177,7 +177,7 @@ Everything `run` has, plus:
     "GPIOA": {
       "MODER": {
         "value": "0xebfffffd",
-        "fields": { "MODER0": 1, "MODER1": 3, "...": 3, "MODER15": 3 }
+        "fields": { "MODE0": 1, "MODE1": 3, "...": 3, "MODE15": 3 }
       }
     }
   },
