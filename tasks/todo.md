@@ -506,14 +506,17 @@ T14, T15, T16. **Wave 6.** **Files:** `firmware/tc74-read/{main.c,circuit.json,e
 
 ### T20: Mid-run inputs
 
-- [ ] The engine can schedule a part prop change at a simulated time.
-- [ ] The CLI takes `--at <time> <part>.<prop>=<value>`, repeatable, plus
+- [x] The engine can schedule a part prop change at a simulated time.
+- [x] The CLI takes `--at <time> <part>.<prop>=<value>`, repeatable, plus
       `--set <part>.<prop>=<value>` for the initial value. Values are checked
       against the part's declared prop types.
-- [ ] Tests:
+- [x] Tests:
   - a TC74 temperature changed at 1 s is visible in `inspect` at 2 s;
   - an unknown prop gives exit 2 with a list of the valid props.
 
+- [ ] Follow-up: parts don't say which props can change at run time, so
+      `--at 1s:temp.variant=A3` passes the checks and the TC74 silently ignores it. Mark
+      runtime props in `PropSpec` and reject the rest with exit 2.
 **Verify:** `node --test 'src/cli/**/*.test.ts'`. **Blocked by:** T10, T15. **Wave 6.** **Files:**
 `engine.ts`, `sim.ts`, tests, `docs/cli.md`. **Size:** S.
 
