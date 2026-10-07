@@ -73,6 +73,8 @@ test("any clock-gated peripheral: I2C1 names RCC->APBENR1.I2C1EN", () => {
     regs: {},
     level: () => "floating" as const,
     where: () => "",
+    sameNet: () => false,
+    parts: [],
   };
   const found = gpioClockOff.check(
     {

@@ -75,6 +75,7 @@ export const stm32g031k8: Chip = {
     },
   },
   pins,
+  af,
   // The peripheral registration list: one import and one entry per peripheral.
   // Every SVD register without one is plain storage, logged as "unsimulated".
   peripherals: [

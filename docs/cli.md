@@ -57,24 +57,47 @@ circuit uses, or all of them if nothing is wired.
 
 **Diagnostics** explain likely mistakes. They never change what the simulation
 does. Each is reported once, where it first happened, with a count. In text it
-is one line, `file:line: severity: message [rule]`:
+is one line, `file:line: severity: message [rule]`, or `cycle N: …` when no
+instruction caused it (an I2C NACK):
 
 ```
 diagnostics
   firmware/clock-off/main.c:25: warning: wrote GPIOB->ODR while RCC->IOPENR.GPIOBEN (bit 1) = 0 — GPIOB's clock is off, so the write was ignored [gpio-clock-off] (3 times)
 ```
 
-| Rule                   | Severity  | Reports                                                                                         |
-| ---------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| `gpio-clock-off`       | `warning` | an access to a peripheral whose RCC clock enable bit is 0 (any clock-gated one, not only GPIO)  |
-| `unsimulated-register` | `info`    | an access to a register the simulator doesn't model yet                                         |
+| Rule                   | Severity  | Reports                                                                                                               |
+| ---------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `gpio-clock-off`       | `warning` | an access to a peripheral whose RCC clock enable bit is 0 (any clock-gated one, not only GPIO)                        |
+| `unsimulated-register` | `info`    | an access to a register the simulator doesn't model yet                                                               |
+| `timingr-while-pe`     | `warning` | a write to I2C1->TIMINGR while CR1.PE = 1, which was ignored                                                          |
+| `i2c-pins-not-af6`     | `warning` | START set while SCL or SDA isn't routed to any pin (no pin in AF mode with AF6), naming what the pins are instead     |
+| `i2c-pin-push-pull`    | `warning` | START set while a pin routed to I2C1 is push-pull (OTYPER bit 0) instead of open drain                                |
+| `i2c-bus-not-idle`     | `warning` | START set while SCL or SDA isn't high, so START never goes out: floating (no pull-ups), low (held low) or in conflict |
+| `i2c-nack-no-device`   | `warning` | an address NACKed, naming the I2C parts on the bus and their addresses, or why one answers none (e.g. held in reset)  |
+| `rule-error`           | `info`    | a diagnostic rule threw: a simulator bug. The run is unaffected; the message names the rule                           |
 
 **`inspect`** prints the same, then:
 
 - the registers with their named bits, decoded from the chip's register map. In
   text, only the peripherals the firmware touched or that are simulated;
   `--json` gives every one;
-- the I2C trace (empty until I2C1 is simulated, T14);
+- the I2C trace. In text, one line per step with its simulated time: `START`
+  (a repeated START too), the address or data byte with R or W and the ACK or
+  NACK (on a read, the data byte's ACK is the controller's), and `STOP`. A
+  feature of I2C1 that the firmware selected but the simulator doesn't model
+  shows as `I2C1 CR2.RELOAD isn't simulated`:
+
+  ```
+  i2c
+    0.250018 s  START
+    0.250110 s  ADDR 0x48 W  ACK
+    0.250194 s  DATA 0x00 W  ACK
+    0.250196 s  START
+    0.250288 s  ADDR 0x48 R  ACK
+    0.250372 s  DATA 0x16 R  NACK
+    0.250381 s  STOP
+  ```
+
 - accesses to unsimulated registers: peripheral, register, read and write counts;
 - each part's `state()`.
 
@@ -181,7 +204,20 @@ Everything `run` has, plus:
       }
     }
   },
-  "i2c": [],
+  "i2c": [
+    {
+      "kind": "i2c",
+      "cycle": 4001764,
+      "periph": "I2C1",
+      "step": {
+        "t": 4001764,
+        "kind": "addr",
+        "addr": 72,
+        "read": false,
+        "ack": "ack"
+      }
+    }
+  ],
   "unsimulated": [
     { "periph": "SCS", "reg": "0xe000e010", "reads": 2, "writes": 1 }
   ],
@@ -189,12 +225,12 @@ Everything `run` has, plus:
 }
 ```
 
-| Field         | Meaning                                                                                                                                                    |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `registers`   | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)  |
-| `i2c`         | the I2C bus events from the event log, in order (filled once I2C1 is simulated, T14)                                                                       |
-| `unsimulated` | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space) |
-| `parts`       | `state()` of each part that has one, by part id                                                                                                            |
+| Field         | Meaning                                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registers`   | every register of every peripheral in the register map, by peripheral and register name: its stored `value`, and its `fields` (named bits, low bit first)                               |
+| `i2c`         | I2C1's events, in order: trace steps as above (`step.kind` is `start`, `addr`, `data` or `stop`), and `{kind: "unsimulated", cycle, periph, feature}` for a feature it doesn't simulate |
+| `unsimulated` | accesses to registers nothing simulates, in order of first access. `reg` is the register name, or its address where it has none (the system control space)                              |
+| `parts`       | `state()` of each part that has one, by part id                                                                                                                                         |
 
 ### Errors
 

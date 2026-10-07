@@ -97,6 +97,25 @@ export interface BoardView {
   level(endpoint: string): Level;
   /** A PC as the snapshot's `at` gives it. */
   where(pc: number): string;
+  /** Whether a wire or a closed switch joins two endpoints now, e.g. "mcu.PB6" and "mcu.I2C1_SCL". */
+  sameNet(a: string, b: string): boolean;
+  /** The circuit's parts, in circuit order. */
+  readonly parts: readonly PartView[];
+}
+
+/** A part as observers see it. */
+export interface PartView {
+  readonly id: string;
+  readonly type: string;
+  readonly pins: readonly string[];
+  /** As loaded, with defaults filled in. */
+  readonly props: Readonly<Record<string, PropValue>>;
+  /** An I2C target's SDA and SCL pins, and the address it answers now (see I2cTarget). */
+  readonly i2c?: {
+    readonly sda: string;
+    readonly scl: string;
+    address(): number | undefined;
+  };
 }
 
 const LOG_LIMIT = 100;
@@ -301,12 +320,31 @@ export class Engine {
 
   /** Read-only views of the board loaded now; a later load() makes a new board. */
   view(): BoardView {
-    const { chip, elf, nets, bus } = this.#loaded();
+    const { chip, elf, nets, bus, circuit, parts } = this.#loaded();
     return {
       chip,
       regs: bus.regs,
       level: (endpoint) => nets.level(endpoint),
       where: (pc) => where(elf, pc),
+      sameNet: (a, b) => nets.sameNet(a, b),
+      parts: circuit.parts.map(({ id, type, props }) => {
+        const part = partTypes.find((t) => t.type === type)!;
+        const defaults = Object.entries(part.props).map(([n, s]) => [
+          n,
+          s.default,
+        ]);
+        const i2c = parts.get(id)!.i2c;
+        return {
+          id,
+          type,
+          pins: part.pins,
+          props: { ...Object.fromEntries(defaults), ...props },
+          // Not write(), read(), start() or stop(): they change the part.
+          ...(i2c && {
+            i2c: { sda: i2c.sda, scl: i2c.scl, address: () => i2c.address() },
+          }),
+        };
+      }),
     };
   }
 

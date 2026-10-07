@@ -97,6 +97,42 @@ test("run and inspect report diagnostics, in text and --json", () => {
   }
 });
 
+test("inspect on tc74-read: the I2C trace is one line per step in text, events in --json", () => {
+  const args = [
+    "--circuit",
+    "firmware/tc74-read/circuit.json",
+    "--at",
+    "300ms",
+  ];
+  const r = sim("inspect", elf("tc74-read"), ...args);
+  assert.equal(r.code, 0, r.stderr);
+  const trace = r.stdout.split("\ni2c\n")[1].split("\nunsimulated")[0];
+  assert.match(trace, /^ {2}0\.250\d{3} s {2}START\n/);
+  assert.deepEqual(
+    trace.split("\n").map((l) => l.replace(/^ {2}\d+\.\d{6} s {2}/, "")),
+    [
+      "START",
+      "ADDR 0x48 W  ACK",
+      "DATA 0x00 W  ACK",
+      "START",
+      "ADDR 0x48 R  ACK",
+      "DATA 0x16 R  NACK", // 22 °C; the controller NACKs the last byte
+      "STOP",
+    ],
+  );
+
+  const j = JSON.parse(
+    sim("inspect", elf("tc74-read"), ...args, "--json").stdout,
+  );
+  assert.equal(j.i2c.length, 7);
+  const { cycle, ...e } = j.i2c[1];
+  assert.deepEqual(e, {
+    kind: "i2c",
+    periph: "I2C1",
+    step: { t: cycle, kind: "addr", addr: 0x48, read: false, ack: "ack" },
+  });
+});
+
 test("a bad circuit exits 2, naming the field", () => {
   const dir = mkdtempSync(join(tmpdir(), "sim-"));
   const circuit = join(dir, "circuit.json");

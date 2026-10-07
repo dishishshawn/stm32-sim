@@ -13,7 +13,7 @@ import { parseCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
 import { catalog, Engine, propSpec } from "../engine/engine.ts";
 import type { Snapshot } from "../engine/engine.ts";
-import type { SimEvent } from "../engine/events.ts";
+import type { I2cTraceEvent, UnsimulatedEvent } from "../engine/events.ts";
 import type { Chip } from "../engine/memory-bus.ts";
 import { propError } from "../parts/part.ts";
 import type { PropSpec, PropValue } from "../parts/part.ts";
@@ -131,11 +131,11 @@ function main(argv: string[]): number {
     string,
     { periph: string; reg: string; reads: number; writes: number }
   >();
-  const i2c: SimEvent[] = [];
+  const i2c: (I2cTraceEvent | UnsimulatedEvent)[] = [];
   if (inspect) {
     engine.events.subscribe((e) => {
       if (e.kind === "net") return;
-      // Every other kind is I2C's, which T14 adds to SimEvent.
+      // Every other kind is I2C1's: its trace, and the features it doesn't simulate.
       if (e.kind !== "reg") return void i2c.push(e);
       touched.add(e.periph);
       if (!e.flags.includes("unsimulated")) return;
@@ -248,7 +248,9 @@ function main(argv: string[]): number {
     }
     out.push(
       `i2c${i2c.length ? "" : "          (none)"}`,
-      ...i2c.map((e) => `  ${JSON.stringify(e)}`),
+      ...i2c.map(
+        (e) => `  ${(e.cycle / chip.clockHz).toFixed(6)} s  ${i2cText(e)}`,
+      ),
       `unsimulated${unsimulated.size ? "" : "  (none)"}`,
       ...[...unsimulated.values()].map(
         (u) => `  ${u.periph}.${u.reg}  ${u.reads} reads, ${u.writes} writes`,
@@ -261,6 +263,17 @@ function main(argv: string[]): number {
   }
   console.log(out.join("\n"));
   return exit;
+}
+
+/** One I2C trace step: "START", "ADDR 0x48 W  ACK", "DATA 0x16 R  NACK", "STOP". */
+function i2cText(e: I2cTraceEvent | UnsimulatedEvent): string {
+  if (e.kind === "unsimulated")
+    return `${e.periph} ${e.feature} isn't simulated`;
+  const s = e.step;
+  if (s.kind === "start" || s.kind === "stop") return s.kind.toUpperCase();
+  const [what, byte] = s.kind === "addr" ? ["ADDR", s.addr] : ["DATA", s.byte];
+  const hex2 = byte.toString(16).padStart(2, "0");
+  return `${what} 0x${hex2} ${s.read ? "R" : "W"}  ${s.ack.toUpperCase()}`;
 }
 
 /** "2s", "1.5s", "100ms", "500us" in seconds. */
