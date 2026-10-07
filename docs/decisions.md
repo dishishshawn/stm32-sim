@@ -249,9 +249,59 @@ Done in T3; `vendor/*/VERSION` records the tag, commit and files.
 
 The device header has bit masks but **no reset values**, so it can't replace the SVD.
 
-**Not yet checked.** The core peripherals (SysTick, NVIC, SCB) are defined by the
-ARMv6-M architecture manual. Whether the G031 SVD includes them gets checked at build
-step 2. If it doesn't, they are hand-written from the ARM manual.
+**Vendored and converted (T4, 2026-10-07).**
+
+- `vendor/svd/stm32g031.svd.patched` was built from stm32-rs commit `a70ec04`
+  (2026-09-16). ST's notice is restored right after the XML declaration.
+  `vendor/svd/VERSION` records the source, commit and hash, and `vendor/svd/LICENSE`
+  is the Apache-2.0 text.
+- `node tools/svd2json.ts` writes `src/chips/stm32g031k8.registers.json`: 35
+  peripherals, 484 registers and 3456 fields, the same field count stm32-rs reports.
+  `tools/svd2json.test.ts` fails if the committed file differs from a fresh
+  conversion by a single byte. It also spot-checks values against RM0444 Rev 6.
+- Shape, keyed by name at each level:
+  - `peripherals.<P>`: `baseAddress`, `registers`;
+  - `registers.<R>`: `offset`, `size`, `access`, `resetValue`, `description`,
+    `fields`;
+  - `fields.<F>`: `bitOffset`, `bitWidth`, `access`, `description`.
+  - Addresses, offsets and reset values are hex strings (`"0x40005400"`). Sizes (in
+    bits), bit offsets and widths are numbers.
+  - Peripherals are sorted by base address, registers by offset, and fields by bit
+    offset.
+- Conversion rules:
+  - `derivedFrom` is resolved the way svd-rs does it: the element's own values win,
+    and a register or field list is inherited whole only when the element has none.
+  - `dim` arrays are expanded (`MODER%s` becomes `MODER0`…`MODER15`).
+  - The one cluster, the DMA1 channels, is flattened to `CH1_CR`, `CH1_NDTR` and so
+    on.
+  - stm32-rs drops a register's access when its fields differ. Such a register takes
+    its fields' access when they all agree, else `read-write`, as svd2rust does. So
+    DMA1 `ISR` is read-only and `IFCR` write-only.
+  - Any other SVD construct makes the script throw rather than guess.
+- Registers that share an offset stay as the SVD has them. Examples: TIMx
+  `CCMR1_Input`/`CCMR1_Output`, `CNT`/`CNT32`, SPI `DR`/`DR8`, CRC `DR`/`DR16`/`DR8`.
+  A peripheral model implements whichever view it needs.
+- Names are stm32-rs's, and some differ from RM0444. GPIO `MODER0` is RM0444's
+  `MODE0`, and `AFREL8` is its `AFSEL8`. Descriptions keep ST's older wording: "master
+  mode" where RM0444 Rev 6 says "controller mode". Every address, offset, bit
+  position and reset value checked so far agrees with RM0444.
+
+**XML parser: `@xmldom/xmldom` 0.9.12**, pinned exact as a dev dependency and used
+only by `tools/`. It is MIT, has no dependencies, and was last published 2026-08-23.
+Its standard DOM suits the lookups `derivedFrom` needs. Rejected:
+
+- `fast-xml-parser` 5.11 (MIT): it now pulls in six dependencies;
+- `saxes` (ISC): no release since 2022;
+- `sax` 1.6 (BlueOak-1.0.0): streaming, so more code for the same result.
+
+**SysTick, NVIC and SCB are not in the SVD** (checked 2026-10-07, T4).
+
+- Neither the patched SVD nor ST's original v1.6 has a peripheral at `0xE000_xxxx`,
+  or anything named SysTick, STK, NVIC or SCB.
+- The only core information is the `<cpu>` block: `CM0` r0p1, `nvicPrioBits` 2 (4 in
+  ST's original), and `vendorSystickConfig` false, meaning the standard Arm SysTick.
+- So these registers are hand-written from the ARMv6-M Architecture Reference Manual,
+  starting with SysTick at build step 2.
 
 ## 5. ELF loading and PC → file:line
 

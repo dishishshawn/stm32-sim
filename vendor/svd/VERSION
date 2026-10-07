@@ -1,0 +1,27 @@
+stm32g031.svd.patched: STM32G031 SVD v1.6, as patched by stm32-rs
+
+Source      https://stm32-rs.github.io/stm32-rs/stm32g031.svd.patched
+Downloaded  2026-10-07 (server Last-Modified: 2026-09-16 15:47:21 GMT)
+SHA-256     0f1d5e1a9fa6f838e4c21bebdc8b165038a93d48ec8b6818ff1b042ba0a1283f
+            (the file as downloaded, before the notice below was added)
+
+stm32-rs commit
+  a70ec047328b19719b74720602939fffe1706ef0 on master (2026-09-16, "Merge pull
+  request #1296 from jakerr/master"). stm32-rs has no gh-pages branch: Pages is
+  deployed from GitHub Actions. The "build gh-pages" run 35117169241 built that
+  commit and finished at 2026-09-16 15:47:30 UTC, 9 s after the file's
+  Last-Modified. No later push to master exists.
+
+Licenses
+  - ST's SVD: Copyright (c) 2024 STMicroelectronics, Apache-2.0. Full text in
+    LICENSE, next to this file.
+  - stm32-rs patches: MIT OR Apache-2.0, at the user's option (stm32-rs README).
+
+Our one change
+  The patched file drops ST's license comment. It is restored, verbatim, right
+  after the XML declaration, followed by a one-line comment saying so. The
+  wording is copied from ST's original STM32G031.svd v1.6:
+  https://github.com/modm-io/cmsis-svd-stm32/blob/e79021accd49bf19bd0b16065f5471fb073ff3ac/stm32g0/STM32G031.svd
+
+Generated from it
+  src/chips/stm32g031k8.registers.json, by `node tools/svd2json.ts`.
