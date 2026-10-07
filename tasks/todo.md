@@ -50,9 +50,9 @@ Create the project skeleton and CI so every later task has `just test` and
   - `AGENTS.md`: the test, single-test and typecheck commands.
 - [x] One smoke test passes under `just test`. A temporary `enum` makes
       `just typecheck` fail with TS1294, which proves `erasableSyntaxOnly` is on.
-- [ ] `.github/workflows/ci.yml` runs on ubuntu-24.04: checkout, mise (node and
+- [x] `.github/workflows/ci.yml` runs on ubuntu-24.04: checkout, mise (node and
       just), `npm ci`, `just typecheck`, `just test`. T3 adds the firmware steps.
-      Written and parsed, but **not yet run**: there's no GitHub remote.
+      Green on its first run (run 37651129484, 2026-10-07): 222 tests, 1 min 4 s.
 
 **Verify:** `just test`, `just typecheck`. CI can only be confirmed green on GitHub
 after a remote exists (plan.md, Open question 2). **Blocked by:** nothing.
@@ -98,7 +98,7 @@ T4 and T5. **Files:** `src/cpu/cortex-m0-core.ts`, `src/cpu/cortex-m0-core.test.
       `build/<program>.elf` with `-mcpu=cortex-m0plus -mthumb -g`.
 - [x] `firmware/blink/main.c` enables the GPIOA clock, sets PA0 as an output and
       toggles it in a busy-wait loop. No SysTick yet.
-- [ ] CI installs `gcc-arm-none-eabi` from apt and runs `just fw` before
+- [x] CI installs `gcc-arm-none-eabi` from apt and runs `just fw` before
       `just test`.
 
 **Verify:** `just fw`; `arm-none-eabi-objdump -h build/blink.elf` shows `.text` at
