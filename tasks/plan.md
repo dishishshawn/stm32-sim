@@ -264,6 +264,10 @@ principles.
   `values`). It is an optional, non-breaking addition, assigned to T19.
 - **After T7:** the `Peripheral` API and clock gating, before T8, T12 and T14.
 - **After T13:** the I2C target interface, before T15 and T18.
+  **Passed 2026-10-07.** Targets get START and STOP, and treat the first write as the
+  register pointer; the address can change at run time; a read with nothing selected
+  returns 0xFF; two targets at one address AND their bytes. I2C1 (T14) owns BUSY and
+  the ISR flags. Not simulated: arbitration loss and clock stretching (decisions.md §7).
 
 ## Risks and mitigations
 
