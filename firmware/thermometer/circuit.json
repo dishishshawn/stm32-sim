@@ -1,0 +1,87 @@
+{
+  "chip": "stm32g031k8",
+  "parts": [
+    {
+      "id": "temp",
+      "type": "tc74",
+      "props": {
+        "temperature": 22,
+        "variant": "A0"
+      }
+    },
+    {
+      "id": "io",
+      "type": "mcp23017",
+      "props": {}
+    },
+    {
+      "id": "tens",
+      "type": "7segment",
+      "props": {
+        "common": "cathode"
+      }
+    },
+    {
+      "id": "units",
+      "type": "7segment",
+      "props": {
+        "common": "cathode"
+      }
+    },
+    {
+      "id": "btn",
+      "type": "pushbutton",
+      "props": {}
+    },
+    {
+      "id": "r_scl",
+      "type": "resistor",
+      "props": {
+        "ohms": 4700
+      }
+    },
+    {
+      "id": "r_sda",
+      "type": "resistor",
+      "props": {
+        "ohms": 4700
+      }
+    }
+  ],
+  "wires": [
+    ["mcu.PB6", "temp.SCLK"],
+    ["mcu.PB7", "temp.SDA"],
+    ["temp.VDD", "3V3"],
+    ["temp.GND", "GND"],
+    ["r_scl.1", "mcu.PB6"],
+    ["r_scl.2", "3V3"],
+    ["r_sda.1", "mcu.PB7"],
+    ["r_sda.2", "3V3"],
+    ["mcu.PB6", "io.SCL"],
+    ["mcu.PB7", "io.SDA"],
+    ["io.VDD", "3V3"],
+    ["io.VSS", "GND"],
+    ["io.A0", "GND"],
+    ["io.A1", "GND"],
+    ["io.A2", "GND"],
+    ["io.RESET", "3V3"],
+    ["io.GPA0", "tens.A"],
+    ["io.GPA1", "tens.B"],
+    ["io.GPA2", "tens.C"],
+    ["io.GPA3", "tens.D"],
+    ["io.GPA4", "tens.E"],
+    ["io.GPA5", "tens.F"],
+    ["io.GPA6", "tens.G"],
+    ["tens.COM.1", "GND"],
+    ["io.GPB1", "units.A"],
+    ["io.GPB2", "units.B"],
+    ["io.GPB3", "units.C"],
+    ["io.GPB4", "units.D"],
+    ["io.GPB5", "units.E"],
+    ["io.GPB6", "units.F"],
+    ["io.GPB7", "units.G"],
+    ["units.COM.1", "GND"],
+    ["io.GPB0", "btn.1.l"],
+    ["btn.2.l", "GND"]
+  ]
+}
