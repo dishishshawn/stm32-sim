@@ -212,6 +212,23 @@ test("a 1-byte write with AUTOEND: the trace, TXIS → STOPF, and the time it ta
   assert.equal(b.r(ICR), 0, "ICR is write-only");
 });
 
+test("I2CCLK is PCLK by default: APB /2 doubles the core cycles; I2C1SEL = HSI16 doesn't", () => {
+  const [CFGR, CCIPR] = [0x08, 0x54];
+  for (const [ccipr, periods] of [
+    [0, 2], // PCLK = HCLK / 2
+    [2 << 12, 1], // HSI16, the 16 MHz core clock here
+  ]) {
+    const b = board();
+    b.parts.set("t", fake(0x50).part);
+    b.bus.writeUint32(RCC + CFGR, 4 << 12); // PPRE 100: HCLK / 2
+    b.bus.writeUint32(RCC + CCIPR, ccipr);
+    b.w(CR2, cr2(0x50, 1, false, true));
+    b.until(FLAGS.TXIS, 100 * SCL * periods);
+    const [start, addr] = b.trace.map((e) => e.t);
+    assert.equal(addr - start, 10 * SCL * periods);
+  }
+});
+
 test("a 2-byte read: ACK then NACK, and SCL held while RXDR is unread", () => {
   const b = board();
   b.parts.set("t", fake(0x50, [0x12, 0x34]).part);

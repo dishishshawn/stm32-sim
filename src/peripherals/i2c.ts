@@ -8,6 +8,7 @@
 import { I2cBus } from "../engine/i2c.ts";
 import type { Ack } from "../engine/i2c.ts";
 import type { Peripheral, Registers } from "./peripheral.ts";
+import { clocks, HSI16_HZ } from "./rcc.ts";
 
 // I2C_CR1 (§32.9.1)
 const PE = 1 << 0;
@@ -77,9 +78,8 @@ type State = "idle" | "addr" | "byte" | "stop" | "tx" | "tc";
  * SCL period in I2CCLK cycles (§32.4.9): tSYNC1 + tSYNC2 + [(SCLH + 1) +
  * (SCLL + 1)] × (PRESC + 1). tSYNC1 + tSYNC2 is taken as its 4-cycle minimum
  * (Table 173 note 2) plus the digital filter's DNF on each edge. Assumed: the
- * analog filter adds nothing, and I2CCLK is the 16 MHz core clock (RCC isn't
- * modelled, and every I2C1SEL source, §5.4.21, runs at 16 MHz here). SDADEL and
- * SCLDEL stretch only when they outlast SCLL, so they're left out.
+ * analog filter adds nothing. SDADEL and SCLDEL stretch only when they outlast
+ * SCLL, so they're left out. `coreCycles` turns I2CCLK cycles into core cycles.
  */
 function sclCycles(regs: Registers): number {
   const t = regs.TIMINGR;
@@ -93,6 +93,18 @@ export const i2c1: Peripheral = {
   gate: { register: "RCC.APBENR1", field: "I2C1EN" },
   create({ regs, nets, regsOf, now, parts, events }) {
     const rcc = regsOf("RCC");
+    /**
+     * Core cycles for `n` I2CCLK cycles at the clocks of the moment, rounded:
+     * events carry whole cycles. I2CCLK is RCC_CCIPR.I2C1SEL's choice (RM0444
+     * §5.4.21): 00 PCLK, 01 SYSCLK, 10 HSI16. Assumed: 11 (reserved) acts as 00.
+     */
+    const coreCycles = (n: number) => {
+      const c = clocks(rcc);
+      const sel = (rcc.CCIPR >>> 12) & 3;
+      return Math.round(
+        (n * c.hclk) / (sel === 1 ? c.sysclk : sel === 2 ? HSI16_HZ : c.pclk),
+      );
+    };
     let state: State = "idle";
     /** When the step on the wire ends, in cycles. */
     let due = 0;
@@ -140,9 +152,9 @@ export const i2c1: Peripheral = {
 
     const set = (flags: number) => (regs.ISR = (regs.ISR | flags) >>> 0);
     const clear = (flags: number) => (regs.ISR = (regs.ISR & ~flags) >>> 0);
-    const onWire = (s: State, cycles: number) => {
+    const onWire = (s: State, i2cclk: number) => {
       state = s;
-      due = at + cycles;
+      due = at + coreCycles(i2cclk);
     };
 
     /** START (or a repeated START) and the address byte. Counted as 10 SCL periods. */

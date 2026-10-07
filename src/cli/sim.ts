@@ -260,7 +260,7 @@ function main(argv: string[]): number {
     out.push(
       `i2c${i2c.length ? "" : "          (none)"}`,
       ...i2c.map(
-        (e) => `  ${(e.cycle / chip.clockHz).toFixed(6)} s  ${i2cText(e)}`,
+        (e) => `  ${engine.secondsAt(e.cycle).toFixed(6)} s  ${i2cText(e)}`,
       ),
       `unsimulated${unsimulated.size || notSimulated.size ? "" : "  (none)"}`,
       ...[...unsimulated.values()].map(

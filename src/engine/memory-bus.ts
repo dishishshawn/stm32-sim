@@ -53,6 +53,7 @@ export interface Region {
 export interface Chip {
   readonly name: string;
   readonly core: "cortex-m0+";
+  /** The core clock (HCLK) after reset. Firmware can change it through RCC. */
   readonly clockHz: number;
   readonly irqCount: number;
   /** Also mapped at 0x00000000 (boot from main flash), where the core reads the vector table. */
@@ -80,6 +81,8 @@ export interface MemoryBusOptions {
    * engine can mount them after building the bus. Default: none.
    */
   readonly parts?: PeripheralContext["parts"];
+  /** RCC changed the core clock (HCLK) to `hz`, passed to each peripheral. Default: ignored. */
+  readonly setCoreClock?: (hz: number) => void;
 }
 
 // The Cortex-M system control space (SysTick, NVIC, SCB). Not in the SVD.
@@ -129,7 +132,14 @@ export class MemoryBus implements Bus {
 
   constructor(
     chip: Chip,
-    { events, now, nets, cpu, parts = [] }: MemoryBusOptions,
+    {
+      events,
+      now,
+      nets,
+      cpu,
+      parts = [],
+      setCoreClock = () => {},
+    }: MemoryBusOptions,
   ) {
     this.#events = events;
     this.#now = now;
@@ -163,28 +173,31 @@ export class MemoryBus implements Bus {
       return all[name];
     };
 
+    const registered = new Set<string>();
     for (const p of chip.peripherals) {
+      if (registered.has(p.name))
+        throw new Error(`${p.name} is registered twice`);
+      registered.add(p.name);
       const regs = regsOf(p.name);
       const instance = p.create({
         regs,
         nets,
         regsOf,
         now: () => now().cycle,
+        setCoreClock,
         cpu,
         parts,
         events,
       });
       const hooks = { ...instance.read, ...instance.write };
-      for (const reg of Object.keys(hooks)) {
+      for (const reg of [...Object.keys(hooks), ...(p.simulates ?? [])]) {
         if (!Object.hasOwn(regs, reg))
           throw new Error(`${p.name} has no register ${reg}`);
       }
       const gate = p.gate && resolveGate(chip.registers, all, p.gate);
       for (const slot of this.#slots.values()) {
         if (slot.periph !== p.name) continue;
-        if (slot.flags === SIMULATED)
-          throw new Error(`${p.name} is registered twice`);
-        slot.flags = SIMULATED;
+        if (p.simulates?.includes(slot.reg) ?? true) slot.flags = SIMULATED;
         slot.read = instance.read?.[slot.reg];
         slot.write = instance.write?.[slot.reg];
         slot.gate = gate;

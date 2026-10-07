@@ -43,45 +43,31 @@ Node runs the `.ts` files directly, with no build step, so:
 ## 1. What a peripheral is
 
 A peripheral is one object of type `Peripheral`, from
-`src/peripherals/peripheral.ts`. The smallest one is RCC,
-`src/peripherals/rcc.ts`, in full:
+`src/peripherals/peripheral.ts`. The smallest one is FLASH,
+`src/peripherals/flash.ts`, in full:
 
 ```ts
-// RCC. Clock gating needs no code here: the memory bus reads the stored IOPENR and
-// APBENR1 bit each peripheral declares as its gate. This file only keeps RCC_CR
-// true to a chip running from HSI16, so firmware waiting for HSIRDY doesn't hang.
-// Every other RCC register is plain storage. See docs/decisions.md §9.
+// FLASH: only FLASH_ACR is simulated, as plain storage, so LATENCY reads back what
+// the firmware wrote. RM0444 §3.7.1: a new LATENCY "becomes effective when it
+// returns the same value upon read", so firmware polls it (§3.3.4). Wait states
+// aren't modelled: real silicon misreads flash when LATENCY is too low for HCLK
+// (§3.3.4, Table 13), and a diagnostic, not the simulator, should say so (T42).
+// Programming and option bytes (KEYR, SR, CR, OPTR, ...) stay plain storage,
+// flagged "unsimulated". See docs/decisions.md §14.
 import type { Peripheral } from "./peripheral.ts";
 
-const HSION = 1 << 8;
-const HSIRDY = 1 << 10;
-const HSERDY = 1 << 17;
-const PLLRDY = 1 << 25;
-
-export const rcc: Peripheral = {
-  name: "RCC",
-  create: ({ regs }) => ({
-    // Assumed (RM0444 §5.4.1, not checked): CR resets to 0x0000_0500, HSION and
-    // HSIRDY. The SVD says 0x63, which has HSI16 off and not ready although the
-    // core runs on it.
-    reset() {
-      regs.CR = HSION | HSIRDY;
-    },
-    write: {
-      // The ready flags are read-only. HSI16 is the system clock, so the hardware
-      // keeps it on and ready. HSE and the PLL aren't simulated: they never get
-      // ready, so firmware that waits for them waits forever.
-      CR: (value) => {
-        regs.CR = ((value & ~(HSERDY | PLLRDY)) | HSION | HSIRDY) >>> 0;
-      },
-    },
-  }),
+export const flash: Peripheral = {
+  name: "FLASH",
+  simulates: ["ACR"],
+  create: () => ({}),
 };
 ```
 
 - `name` is the SVD peripheral name, its key in the register JSON: `"RCC"`,
   `"I2C1"`, `"TIM14"`.
-- `gate` is the RCC enable bit its clock depends on (step 4). RCC has none.
+- `gate` is the RCC enable bit its clock depends on (step 4). FLASH has none.
+- `simulates` lists the registers it models, if not all of them. The others
+  stay plain storage, flagged unsimulated. Leave it out to model them all.
 - `create(ctx)` runs once, when the chip is built, and returns the instance.
   Keep the peripheral's own state (anything that isn't a register) in local
   variables inside `create()`.
@@ -92,11 +78,13 @@ export const rcc: Peripheral = {
 | -------------- | ----------------------------------------------------------------------------------------------- |
 | `regs`         | this peripheral's register values by name, e.g. `regs.CR1`: read and assign them directly       |
 | `regsOf(name)` | another peripheral's registers, live and read-only, e.g. `regsOf("RCC").APBENR1`                |
-| `now()`        | CPU cycles since reset: simulated time, at 16 MHz                                               |
+| `now()`        | CPU cycles since reset: simulated time. A cycle lasts 1/HCLK (16 MHz after reset)               |
 | `cpu`          | `setPending(exception)` raises an interrupt (step 7). Its other three methods are SCB's         |
 | `nets`         | the circuit: `level`, `drive`, `setSwitch` and `listen` on endpoints such as `mcu.PB6` (step 8) |
 | `parts`        | the circuit's mounted parts by id, live: I2C1's bus finds its targets here                      |
 | `events`       | the event log, for events the peripheral makes itself (step 9)                                  |
+
+`ctx.setCoreClock(hz)` is RCC's: it tells the engine that HCLK changed.
 
 The instance (a `PeripheralInstance`) has these members, all optional:
 
@@ -158,8 +146,8 @@ One register, as the JSON has it:
 - Registers that share an offset (TIMx `CCMR1_Input` and `CCMR1_Output`) are
   one value, under the first name the JSON lists. Hook that one.
 - **If RM0444 and the JSON disagree, RM0444 wins.** Override the value in
-  your file with a comment citing the section, as RCC's `reset()` above does
-  for `CR`.
+  your file with a comment citing the section, as RCC's `reset()`
+  (`src/peripherals/rcc.ts`) does for `CR`.
 - **Core peripherals** (SysTick, NVIC, SCB) belong to the Cortex-M0+, not to
   ST, and the SVD doesn't have them. Their registers are hand-written in the
   peripheral's file, in the JSON's shape and with CMSIS names, from the ARMv6-M
@@ -346,10 +334,12 @@ expression with `>>> 0`, as I2C1 does: `regs.ISR = (regs.ISR | flags) >>> 0`.
 Anything that happens over time happens in `tick`: a counter counting, a byte
 going out on the wire, a flag that sets later. The engine calls it after every
 instruction, with that instruction's cycles (one to a few), in registration
-order; while the core sleeps in WFI, with up to 16,000 cycles (1 ms) at once.
-Time is CPU cycles at 16 MHz, so a run gives the same result every time, and
-`ctx.now()` is the cycle count since reset. Never read the wall clock
-(`Date.now()`, `performance.now()`, `setTimeout`).
+order; while the core sleeps in WFI, with up to 1 ms of cycles at once.
+Time is CPU cycles at the core clock, HCLK (16 MHz after reset; RCC can change
+it), so a run gives the same result every time, and `ctx.now()` is the cycle
+count since reset. A peripheral on its own kernel clock (I2C1's I2CCLK) turns
+its clock cycles into core cycles with `clocks()` from `rcc.ts`. Never read the
+wall clock (`Date.now()`, `performance.now()`, `setTimeout`).
 
 - Turn cycles into your peripheral's clock with arithmetic, and keep the
   remainder, so the result doesn't depend on how the cycles are sliced. The

@@ -441,8 +441,8 @@ the datasheet says it moves.
 
 Anything the datasheet times (a conversion, a power-on delay) happens in
 `tick`. During a run the engine calls it every 1 ms of simulated time, with
-`seconds = 0.001`. Simulated time comes from CPU cycles at 16 MHz, so a run
-gives the same result every time. Never read the wall clock (`Date.now()`,
+`seconds = 0.001`. Simulated time comes from CPU cycles at the core clock, so a
+run gives the same result every time. Never read the wall clock (`Date.now()`,
 `performance.now()`, `setTimeout`).
 
 The TC74 converts eight times a second, and a slider move shows in TEMP only

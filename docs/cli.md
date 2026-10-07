@@ -15,8 +15,8 @@ sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
 ```
 
 Both load the ELF onto the circuit's chip, reset it, and run it for the given
-**simulated** time (time comes from CPU cycles at 16 MHz, never from the wall
-clock, so a run is deterministic).
+**simulated** time (time comes from CPU cycles at the core clock, 16 MHz after
+reset, never from the wall clock, so a run is deterministic).
 
 - `--circuit <json>`: the circuit file. Without one, the board is the chip alone
   (`stm32g031k8`), with nothing wired.
@@ -162,7 +162,7 @@ are hex strings (`"0x08000154"`); bit-field values are numbers.
 | `circuit`     | the circuit path, or `null`                                                                                                              |
 | `status`      | `"completed"`, `"breakpoint"`, `"hardfault"` or `"lockup"`                                                                               |
 | `message`     | one line for a person, e.g. the line above                                                                                               |
-| `seconds`     | simulated time at the end: `cycles` / 16 MHz. A run stops at the first instruction at or past `--for`                                    |
+| `seconds`     | simulated time at the end, each cycle at the core clock of its moment. A run stops at the first instruction at or past `--for`           |
 | `cycles`      | CPU cycles since reset                                                                                                                   |
 | `pc`          | the PC at the end                                                                                                                        |
 | `at`          | the PC as `file:line`, else `function+0xoffset`, else the address                                                                        |
