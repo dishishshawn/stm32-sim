@@ -1,5 +1,5 @@
 // The I2C trace panel: one row per bus step, timed and worded as `sim inspect`
-// prints them, grouped from START to STOP, NACK highlighted. It only listens to
+// prints them, grouped from START to STOP, a target's NACK highlighted. It only listens to
 // the event log, so it can't change the run. Rows carry `data-cycle`, which the
 // diagnostics panel (./diagnostics.ts) uses to jump to a step.
 import type { I2cTraceEvent } from "../engine/events.ts";
@@ -80,7 +80,12 @@ export const tracePanel: Panel = (ui) => {
       const li = document.createElement("li");
       li.textContent = `${ui.engine.secondsAt(e.cycle).toFixed(6)} s  ${i2cText(e.step)}`;
       li.dataset.cycle = String(e.cycle);
-      if ("ack" in e.step && e.step.ack === "nack") li.className = "nack";
+      // Only a target's NACK is trouble: on its address, or on a byte the
+      // controller wrote. The controller NACKs the last byte it reads on
+      // purpose; that's how a read ends.
+      const s = e.step;
+      if ("ack" in s && s.ack === "nack" && (s.kind === "addr" || !s.read))
+        li.className = "nack";
       group.append(li);
       rows++;
       if (e.step.kind === "stop") group = null;

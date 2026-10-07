@@ -48,10 +48,13 @@ test("thermometer: the trace shows the TC74's read, as sim inspect does, bounded
   assert.ok(rows.length <= 500, `${rows.length} rows`);
   assert.ok(rows.some((r) => r.endsWith("  ADDR 0x48 W  ACK")));
   assert.ok(rows.some((r) => r.endsWith("  STOP")));
+  // The controller's NACK after the last byte it reads ends the read: normal,
+  // so not highlighted (a target's NACK is, as the RESET-floating test shows).
   assert.ok(
-    rows.some((r) => /^!.* DATA 0x16 R {2}NACK$/.test(r)),
-    "a highlighted NACK",
+    rows.some((r) => /^[^!].* DATA 0x16 R {2}NACK$/.test(r)),
+    "the read's closing NACK, not highlighted",
   );
+  assert.ok(!rows.some((r) => /^!.* R {2}NACK$/.test(r) && r.includes("DATA")));
   // Each transaction from START to STOP; the last one may still be going.
   for (const g of shown.slice(0, -1)) {
     assert.match(g[0], / START$/);
