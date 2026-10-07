@@ -10,8 +10,8 @@ once the package's `bin` is on your PATH.
 ## Commands
 
 ```
-sim run <elf> [--circuit <json>] --for <duration> [--json]
-sim inspect <elf> [--circuit <json>] --at <duration> [--json]
+sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
+sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
 ```
 
 Both load the ELF onto the circuit's chip, reset it, and run it for the given
@@ -23,6 +23,28 @@ clock, so a run is deterministic).
 - `--for` / `--at <duration>`: how long to run. A number and a unit: `2s`,
   `1.5s`, `100ms`, `500us`.
 - `--json`: print one JSON object on stdout instead of text.
+
+**Inputs** set a part's props (the circuit's `props`, e.g. a TC74's
+`temperature` or a push-button's `pressed`). Each flag is repeatable.
+
+- `--set <part>.<prop>=<value>`: the value from the start, in place of the
+  circuit's.
+- `--at <duration>:<part>.<prop>=<value>`: change it when the run reaches that
+  simulated time since reset, at the first instruction boundary at or past it.
+  Changes due at the same time apply in the order given.
+- `--at <duration>:<part>.press`: `pressed=true` at that time and
+  `pressed=false` 50 ms later.
+
+`inspect`'s own `--at <duration>` shares the flag: a value with a `:` is a
+change, one without is when to stop. So
+`sim inspect fw.elf --circuit c.json --at 1s:temp.temperature=30 --at 2s` sets
+30 °C at 1 s and stops at 2 s.
+
+A value is read as the prop's declared type: a number (`30`, `-2.5`), `true` or
+`false`, or a string (the rest of the argument, as is). It must also be in the
+prop's range or options. An unknown part, an unknown prop or a bad value exits
+2 and names what is valid:
+`sim: --at: tc74 "temp" has no prop "temp" (props: variant, temperature)`.
 
 A run ends early on a lockup or a BKPT. A HardFault does not end it: the
 firmware runs its handler (ST's default handler loops forever) until the time

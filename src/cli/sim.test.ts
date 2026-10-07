@@ -115,6 +115,82 @@ test("a HardFault exits 1 and names the faulting line, without stderr", () => {
   assert.match(j.log[0], /^HardFault at 0x/);
 });
 
+// A TC74, and a button that pulls PA1 to GND while pressed.
+const INPUTS = ["--circuit", "src/cli/fixtures/inputs.json"];
+
+test("--set before the run, --at mid-run: a TC74 temperature set at 1 s shows at 2 s", () => {
+  const inspect = (at: string) => {
+    const r = sim(
+      "inspect",
+      elf("blink"),
+      ...INPUTS,
+      "--set",
+      "temp.temperature=20",
+      "--at",
+      "1s:temp.temperature=30",
+      "--at",
+      at,
+      "--json",
+    );
+    assert.equal(r.code, 0, r.stdout);
+    return JSON.parse(r.stdout).parts.temp;
+  };
+  assert.equal(inspect("0.5s").temperature, 20);
+  assert.deepEqual(inspect("2s"), {
+    temperature: 30,
+    shutdown: false,
+    dataReady: true,
+  });
+});
+
+test("--at <t>:btn.press presses the button at t and releases it 50 ms later", () => {
+  const pa1 = (at: string) =>
+    JSON.parse(
+      sim(
+        "inspect",
+        elf("blink"),
+        ...INPUTS,
+        "--at",
+        "10ms:btn.press",
+        "--at",
+        at,
+        "--json",
+      ).stdout,
+    ).pins.PA1;
+  assert.equal(pa1("5ms"), "floating");
+  assert.equal(pa1("30ms"), "low");
+  assert.equal(pa1("70ms"), "floating");
+});
+
+test("an unknown part or prop, or a bad value, exits 2 and names what is valid", () => {
+  const run = (...args: string[]) =>
+    sim("run", elf("blink"), ...INPUTS, "--for", "1ms", ...args);
+  let r = run("--at", "1s:temp.temp=30");
+  assert.equal(r.code, 2);
+  assert.match(
+    r.stderr,
+    /^sim: --at: tc74 "temp" has no prop "temp" \(props: variant, temperature\)$/m,
+  );
+  r = run("--set", "nope.temperature=30", "--json");
+  assert.equal(r.code, 2);
+  assert.equal(
+    JSON.parse(r.stdout).error,
+    '--set: unknown part "nope" (parts: temp, btn)',
+  );
+  r = run("--set", "temp.temperature=hot");
+  assert.equal(r.code, 2);
+  assert.match(
+    r.stderr,
+    /--set: temp\.temperature: expected a number, got "hot"/,
+  );
+  r = run("--at", "1s:btn.pressed=yes");
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /expected true or false, got "yes"/);
+  r = run("--at", "2s");
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /--at: expected <duration>:<part>\.<prop>=<value>/);
+});
+
 test("a bad duration exits 2", () => {
   const r = sim("run", elf("blink"), "--for", "2 seconds");
   assert.equal(r.code, 2);

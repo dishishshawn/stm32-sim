@@ -9,14 +9,20 @@ import type { ParseArgsConfig } from "node:util";
 import { chips } from "../chips/index.ts";
 import { parseCircuit } from "../engine/circuit.ts";
 import type { Circuit } from "../engine/circuit.ts";
-import { catalog, Engine } from "../engine/engine.ts";
+import { catalog, Engine, propSpec } from "../engine/engine.ts";
 import type { Snapshot } from "../engine/engine.ts";
 import type { SimEvent } from "../engine/events.ts";
 import type { Chip } from "../engine/memory-bus.ts";
+import { propError } from "../parts/part.ts";
+import type { PropSpec, PropValue } from "../parts/part.ts";
 
 const USAGE = `usage:
-  sim run <elf> [--circuit <json>] --for <duration> [--json]
-  sim inspect <elf> [--circuit <json>] --at <duration> [--json]
+  sim run <elf> [--circuit <json>] --for <duration> [inputs] [--json]
+  sim inspect <elf> [--circuit <json>] --at <duration> [inputs] [--json]
+inputs, repeatable:
+  --set <part>.<prop>=<value>            before the run
+  --at <duration>:<part>.<prop>=<value>  at that simulated time
+  --at <duration>:<part>.press           pressed, then released 50 ms later
 durations: 2s, 1.5s, 100ms, 500us`;
 
 /** Bad arguments or input: exit 2. */
@@ -51,7 +57,10 @@ function main(argv: string[]): number {
     );
   const options: ParseArgsConfig["options"] = {
     circuit: { type: "string" },
-    [time]: { type: "string" },
+    ...(time === "for" && { for: { type: "string" } }),
+    // Prop changes, and inspect's own --at <duration>: only a change has a ":".
+    at: { type: "string", multiple: true },
+    set: { type: "string", multiple: true },
     json: { type: "boolean" },
   };
   let values, positionals;
@@ -70,7 +79,11 @@ function main(argv: string[]): number {
       true,
     );
   }
-  const seconds = duration(values[time] as string | undefined, `--${time}`);
+  const ats = (values.at ?? []) as string[];
+  const changes = time === "at" ? ats.filter((a) => a.includes(":")) : ats;
+  const stop =
+    time === "at" ? ats.findLast((a) => !a.includes(":")) : values.for;
+  const seconds = duration(stop as string | undefined, `--${time}`);
   const elfPath = positionals[0];
   const circuitPath = values.circuit as string | undefined;
 
@@ -81,8 +94,33 @@ function main(argv: string[]): number {
         parseCircuit(readFileSync(circuitPath, "utf8"), catalog),
       )
     : { chip: Object.keys(chips)[0], parts: [], wires: [] };
+  for (const text of (values.set ?? []) as string[]) {
+    const { id, name, value } = assignment(text, "--set", circuit);
+    circuit.parts.find((p) => p.id === id)!.props[name] = value;
+  }
+  const scheduled = changes
+    .flatMap((text): [number, string][] => {
+      const colon = text.indexOf(":");
+      if (colon < 0) {
+        throw new InputError(
+          `--at: expected <duration>:<part>.<prop>=<value>, got "${text}"`,
+          true,
+        );
+      }
+      const t = duration(text.slice(0, colon), "--at");
+      const change = text.slice(colon + 1);
+      const press = /^(.+)\.press$/.exec(change);
+      return press
+        ? [
+            [t, `${press[1]}.pressed=true`],
+            [t + 0.05, `${press[1]}.pressed=false`],
+          ]
+        : [[t, change]];
+    })
+    .map(([t, text]) => ({ t, ...assignment(text, "--at", circuit) }));
   const engine = new Engine();
   input(elfPath, () => engine.load(elf, circuit));
+  for (const c of scheduled) engine.setPropAt(c.t, c.id, c.name, c.value);
 
   const inspect = command === "inspect";
   const touched = new Set<string>();
@@ -224,6 +262,37 @@ function duration(text: string | undefined, flag: string): number {
     );
   }
   return Number(m[1]) * { s: 1, ms: 1e-3, us: 1e-6 }[m[2] as "s"];
+}
+
+/** "<part>.<prop>=<value>", the value parsed as the prop's declared type and checked. */
+function assignment(text: string, flag: string, circuit: Circuit) {
+  const m = /^([^.=]+)\.([^=]+)=(.*)$/s.exec(text);
+  if (!m) {
+    throw new InputError(
+      `${flag}: expected <part>.<prop>=<value>, got "${text}"`,
+      true,
+    );
+  }
+  const [, id, name, raw] = m;
+  let spec: PropSpec;
+  try {
+    spec = propSpec(circuit, id, name);
+  } catch (e) {
+    throw new InputError(`${flag}: ${(e as Error).message}`);
+  }
+  // Text that isn't the declared type stays a string, for propError to name.
+  const n = Number(raw);
+  const value =
+    spec.type === "number"
+      ? raw.trim() && Number.isFinite(n)
+        ? n
+        : raw
+      : spec.type === "boolean"
+        ? raw === "true" || (raw === "false" ? false : raw)
+        : raw;
+  const error = propError(spec, value);
+  if (error) throw new InputError(`${flag}: ${id}.${name}: ${error}`);
+  return { id, name, value: value as PropValue };
 }
 
 /** Runs `f`; anything it throws is invalid input, labelled with `path`. */

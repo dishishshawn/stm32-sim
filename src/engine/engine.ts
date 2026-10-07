@@ -6,8 +6,8 @@
 import { chips } from "../chips/index.ts";
 import { CortexM0Core } from "../cpu/cortex-m0-core.ts";
 import { parts as partTypes } from "../parts/index.ts";
-import { mountPart } from "../parts/part.ts";
-import type { PartInstance } from "../parts/part.ts";
+import { mountPart, propError } from "../parts/part.ts";
+import type { PartInstance, PropSpec, PropValue } from "../parts/part.ts";
 import type { Circuit, CircuitCatalog } from "./circuit.ts";
 import { coreCpu } from "./core-cpu.ts";
 import { loadElf } from "./elf.ts";
@@ -25,6 +25,24 @@ export const catalog: CircuitCatalog = {
     Object.entries(chips).map(([name, chip]) => [name, chip.pins]),
   ),
 };
+
+/** The spec of part `id`'s prop `name` in `circuit`. Throws naming the valid parts or props. */
+export function propSpec(circuit: Circuit, id: string, name: string): PropSpec {
+  const p = circuit.parts.find((p) => p.id === id);
+  const list = (names: string[]) => names.join(", ") || "none";
+  if (!p) {
+    throw new Error(
+      `unknown part "${id}" (parts: ${list(circuit.parts.map((p) => p.id))})`,
+    );
+  }
+  const { props } = partTypes.find((t) => t.type === p.type)!;
+  if (!Object.hasOwn(props, name)) {
+    throw new Error(
+      `${p.type} "${id}" has no prop "${name}" (props: ${list(Object.keys(props))})`,
+    );
+  }
+  return props[name];
+}
 
 /** Parts' tick(seconds) runs once per this much simulated time. */
 const PART_TICK_SECONDS = 0.001;
@@ -82,6 +100,9 @@ interface Board {
   /** Cycles per part tick, and the cycle the next one is due at. */
   partTick: number;
   nextPartTick: number;
+  circuit: Circuit;
+  /** setPropAt() changes not yet due, by cycle; equal cycles in the order scheduled. */
+  changes: { at: number; id: string; name: string; value: PropValue }[];
 }
 
 export class Engine {
@@ -175,6 +196,8 @@ export class Engine {
       parts,
       partTick,
       nextPartTick: partTick,
+      circuit,
+      changes: [],
     };
     this.#pc = core.PC;
     this.#break = null;
@@ -221,6 +244,24 @@ export class Engine {
     if (!b.core.lockedUp) this.#advance(b, Infinity);
   }
 
+  /**
+   * Sets part `id`'s prop `name` to `value` when the run reaches `seconds` of
+   * simulated time since reset: at the first instruction boundary at or past
+   * it, even in the middle of a runFor(). Now, if it already has. Changes due
+   * on the same cycle apply in the order they were scheduled.
+   */
+  setPropAt(seconds: number, id: string, name: string, value: PropValue): void {
+    const b = this.#loaded();
+    if (!(seconds >= 0 && Number.isFinite(seconds)))
+      throw new Error(`invalid time ${seconds}: expected seconds >= 0`);
+    const error = propError(propSpec(b.circuit, id, name), value);
+    if (error) throw new Error(`${id}.${name}: ${error}`);
+    const at = Math.round(seconds * b.chip.clockHz);
+    const i = b.changes.findIndex((c) => c.at > at);
+    b.changes.splice(i < 0 ? b.changes.length : i, 0, { at, id, name, value });
+    this.#applyChanges(b);
+  }
+
   snapshot(): Snapshot {
     const { chip, elf, nets, bus, core, parts } = this.#loaded();
     return {
@@ -261,7 +302,9 @@ export class Engine {
       // ponytail: sleeps in slices up to 1 ms, so a peripheral's tick() sees
       // them whole and a wake-up can be up to 1 ms late. Ask peripherals for
       // their next deadline if WFI firmware needs better.
-      cycles = Math.min(end, b.nextPartTick) - core.cycles;
+      cycles =
+        Math.min(end, b.nextPartTick, b.changes[0]?.at ?? Infinity) -
+        core.cycles;
       core.cycles += cycles;
     } else {
       this.#pc = core.PC;
@@ -284,6 +327,15 @@ export class Engine {
     while (core.cycles >= b.nextPartTick) {
       b.nextPartTick += b.partTick;
       for (const p of b.parts.values()) p.tick?.(b.partTick / b.chip.clockHz);
+    }
+    this.#applyChanges(b);
+  }
+
+  /** Applies the setPropAt() changes that are due. */
+  #applyChanges(b: Board): void {
+    while (b.changes.length && b.changes[0].at <= b.core.cycles) {
+      const { id, name, value } = b.changes.shift()!;
+      b.parts.get(id)!.setProp?.(name, value);
     }
   }
 }

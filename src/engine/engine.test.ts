@@ -192,6 +192,87 @@ test("parts tick in simulated time, and the snapshot carries their state()", () 
   });
 });
 
+/** Blink with a TC74, and a button that pulls PA1 to GND while pressed. */
+const inputsCircuit = () =>
+  parseCircuit(
+    JSON.stringify({
+      chip: "stm32g031k8",
+      parts: [
+        { id: "temp", type: "tc74", props: {} },
+        { id: "btn", type: "pushbutton", props: {} },
+      ],
+      wires: [
+        ["btn.1.l", "mcu.PA1"],
+        ["btn.2.l", "GND"],
+      ],
+    }),
+    catalog,
+  );
+
+test("setPropAt: a change lands at its simulated time, mid-run, and the same schedule gives the same events", () => {
+  const elf = blinkElf();
+  const engine = new Engine();
+  const runs = [1, 2].map(() => {
+    const events: SimEvent[] = [];
+    const off = engine.events.subscribe((e) => events.push(e));
+    engine.load(elf, inputsCircuit());
+    engine.setPropAt(1, "temp", "temperature", 30);
+    engine.setPropAt(1, "btn", "pressed", true);
+    engine.setPropAt(1.25, "btn", "pressed", false);
+    engine.runFor(0.999);
+    assert.equal(engine.snapshot().parts.temp.temperature, 25);
+    engine.runFor(0.5); // one call across all three changes
+    off();
+    assert.equal(engine.snapshot().parts.temp.temperature, 30);
+    return { events, snapshot: engine.snapshot() };
+  });
+  const pa1 = runs[0].events.filter(
+    (e): e is NetEvent => e.kind === "net" && e.endpoint === "mcu.PA1",
+  );
+  // At the first instruction boundary at or past each time (an instruction is a few cycles).
+  assert.deepEqual(
+    pa1.map((e) => e.level),
+    ["low", "floating"],
+  );
+  assert.ok(pa1[0].cycle >= CLOCK_HZ && pa1[0].cycle < CLOCK_HZ + 8);
+  assert.ok(
+    pa1[1].cycle >= 1.25 * CLOCK_HZ && pa1[1].cycle < 1.25 * CLOCK_HZ + 8,
+  );
+  assert.deepEqual(runs[1], runs[0]);
+});
+
+test("setPropAt: while the core sleeps (WFI), a change lands on its exact cycle", () => {
+  const elf = blinkElf();
+  const main = loadElf(elf).symbol("main")!;
+  const engine = new Engine();
+  const events: SimEvent[] = [];
+  engine.events.subscribe((e) => events.push(e));
+  engine.load(patch(elf, { [main]: 0xbf30bf30 }), inputsCircuit()); // WFI; WFI
+  engine.setPropAt(0.0105, "btn", "pressed", true); // between two 1 ms part ticks
+  engine.runFor(0.02);
+  const press = events.find(
+    (e): e is NetEvent => e.kind === "net" && e.endpoint === "mcu.PA1",
+  );
+  assert.equal(press?.cycle, 0.0105 * CLOCK_HZ);
+});
+
+test("setPropAt: an unknown part or prop, or a bad value, throws naming what is valid", () => {
+  const engine = new Engine();
+  engine.load(blinkElf(), inputsCircuit());
+  assert.throws(
+    () => engine.setPropAt(1, "nope", "temperature", 30),
+    /^Error: unknown part "nope" \(parts: temp, btn\)$/,
+  );
+  assert.throws(
+    () => engine.setPropAt(1, "temp", "temp", 30),
+    /^Error: tc74 "temp" has no prop "temp" \(props: variant, temperature\)$/,
+  );
+  assert.throws(
+    () => engine.setPropAt(1, "temp", "temperature", 200),
+    /^Error: temp\.temperature: expected -65 to 150, got 200$/,
+  );
+});
+
 test("step() executes one instruction", () => {
   const elf = blinkElf();
   const { engine } = load(elf);
