@@ -52,6 +52,10 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
   // T33: the pages open on /events, server-sent events: each gets "data: elf"
   // when the ELF is rebuilt, and reloads its firmware (src/ui/watch.ts).
   const pages = new Set<ServerResponse>();
+  // T36: the source files named by each ELF this server has given the page.
+  // /source serves only these: the page asks about the firmware it has, which
+  // may no longer be the ELF on disk (a rebuild under sim watch).
+  const served = new Set<string>();
   const server = createServer((req, res) => {
     const { port } = server.address() as AddressInfo;
     // Only pages from this server: a site that rebinds its DNS name to
@@ -87,6 +91,11 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
       } else if (path === "/elf") {
         type = "application/octet-stream";
         body = input.elf();
+        try {
+          for (const file of loadElf(body).sources()) served.add(file);
+        } catch {
+          // Not an ELF the page can load either; it reports that itself.
+        }
       } else if (path === "/circuit") {
         type = "application/json";
         body = input.circuit();
@@ -105,14 +114,12 @@ export function serveUi(port: number, input: UiInput): Promise<string> {
         // ---- T36: source text for the Source panel (see sourceFile) ----
         type = "text/plain; charset=utf-8";
         const file = sourceFile(
-          input.elf(),
+          served,
           new URL(req.url!, "http://localhost").searchParams.get("file"),
         );
         // Named but not on this machine (the C library's): no text, rather
         // than a 404 the browser would log as an error on every step into it.
-        // Also no text while the ELF on disk can't be read (a rebuild in
-        // progress, or a broken build): nothing to check the path against.
-        body = file && existsSync(file) ? readFileSync(file) : "";
+        body = existsSync(file) ? readFileSync(file) : "";
         // ---- end T36 ----
       } else {
         res.writeHead(404, HEADERS).end();
@@ -149,20 +156,15 @@ function inside(dir: string, rest: string): string {
 }
 
 // ---- T36: /source?file=<path> ----
-// A safety boundary: the page may read the source files the loaded ELF's DWARF
-// line table names, as the absolute paths pcToSource() gives them (decisions.md
-// §5), read-only, and nothing else. The path must equal one of them exactly, so
-// a relative path, a ".." or any other file is not found.
+// A safety boundary: the page may read the source files named by the DWARF line
+// table of an ELF this server has given it (via /elf), as the absolute paths
+// pcToSource() gives them (decisions.md §5), read-only, and nothing else. The
+// path must equal one of them exactly, so a relative path, a ".." or any other
+// file is not found.
 
-/** `file`, if it is one of the ELF's source files; null if the ELF on disk can't be read; else a not-found error. */
-function sourceFile(elf: Uint8Array, file: string | null): string | null {
-  let sources: string[];
-  try {
-    sources = loadElf(elf).sources();
-  } catch {
-    return null; // the ELF on disk isn't readable now: serve nothing
-  }
-  if (!file || !isAbsolute(file) || !sources.includes(file))
+/** `file`, if a served ELF names it as a source file; else a not-found error. */
+function sourceFile(served: ReadonlySet<string>, file: string | null): string {
+  if (!file || !isAbsolute(file) || !served.has(file))
     throw Object.assign(new Error("not found"), { code: "ENOENT" });
   return file;
 }

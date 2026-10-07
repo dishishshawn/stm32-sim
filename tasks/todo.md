@@ -839,12 +839,12 @@ T12, T30. **Wave 7.** **Size:** M.
 T32 found the page can't set a part's props, so its thermometer test had to start
 with the TC74 (variant A0) and two common-cathode displays already placed.
 
-- [ ] Selecting a part shows its props in a small form generated from each prop's
+- [x] Selecting a part shows its props in a small form generated from each prop's
       `PropSpec`: a select for `options`, a number input with min/max, a checkbox for
       booleans. Changing one goes through `change()` (the simulation restarts) and is
       saved with the circuit.
-- [ ] Test: add a TC74 from the palette, set variant A0, and the firmware reads it at
-      0x48; add a 7-segment display and switch it to common anode.
+- [x] Test: add a TC74 from the palette, set variant A0, and the firmware reads it at
+      0x48; add a 7-segment display and switch it to common anode (dark while COM is on GND, as on hardware; with COM moved to 3V3 its segments invert).
 
 **Verify:** a UI test. **Blocked by:** T32. **Size:** S.
 

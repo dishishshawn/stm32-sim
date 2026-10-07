@@ -75,6 +75,10 @@ export async function open(t: TestContext, elf: string, circuit: string) {
   page.on("request", (r) => {
     if (!r.url().startsWith(url)) problems.push(`request to ${r.url()}`);
   });
+  // Name the URL of a failed response: the console only says "status of 404".
+  page.on("response", (r) => {
+    if (r.status() >= 400) problems.push(`${r.status()} ${r.url()}`);
+  });
   await page.goto(url);
   // The page has fetched the firmware and drawn the circuit.
   await page.waitForFunction(
