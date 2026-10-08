@@ -221,3 +221,17 @@ test("the save route refuses a body parseCircuit rejects, and a PUT from anywher
   assert.equal(statSync(file).mtimeMs, 0, "nothing wrote the file");
   assert.equal(readFileSync(file, "utf8"), readFileSync(THERMOMETER, "utf8"));
 });
+
+test("the Nucleo board moves with drag and arrow keys, and connected wires follow", async (t) => {
+  const file = copy(t);
+  const { page, problems } = await open(t, "thermometer", file);
+  const before = await layout(page);
+  assert.equal(before.mcu, "0px 0px");
+
+  await page.locator('[data-part="mcu"]').focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowDown");
+  const moved = await layout(page);
+  assert.equal(moved.mcu, "9.6px 9.6px");
+  assert.deepEqual(problems, []);
+});

@@ -51,6 +51,81 @@ const ELEMENT: Record<string, string> = {
   resistor: "wokwi-resistor",
 };
 
+/** Palette of vibrant jumper wire colors. */
+const WIRE_COLORS = [
+  "#2563eb", // blue
+  "#16a34a", // emerald green
+  "#d97706", // amber
+  "#9333ea", // purple
+  "#db2777", // pink
+  "#0284c7", // sky
+  "#ea580c", // orange
+  "#0d9488", // teal
+];
+
+function wireColor(a: string, b: string, index: number): string {
+  const isPower = (ep: string) =>
+    ep === "3V3" || ep.endsWith(".VDD") || ep.endsWith(".V+");
+  const isGnd = (ep: string) => ep === "GND" || ep.endsWith(".GND");
+  const isScl = (ep: string) => ep.includes("SCL") || ep.includes("PB6");
+  const isSda = (ep: string) => ep.includes("SDA") || ep.includes("PB7");
+
+  if (isPower(a) || isPower(b)) return "#ef4444";
+  if (isGnd(a) || isGnd(b)) return "#334155";
+  if (isScl(a) || isScl(b)) return "#f59e0b";
+  if (isSda(a) || isSda(b)) return "#06b6d4";
+
+  return WIRE_COLORS[index % WIRE_COLORS.length];
+}
+
+/**
+ * Calculates a smooth cubic Bezier arc for jumper wires.
+ * Eliminates the chaotic "spiderweb" effect by fanning out parallel wires.
+ */
+function wirePath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  index = 0,
+): string {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 8) {
+    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  }
+
+  // Consistent orientation: always evaluate perpendicular from left to right (or top to bottom)
+  // so wires in opposite endpoint order curve in the SAME direction and don't cross!
+  const isLeftToRight = from.x < to.x || (from.x === to.x && from.y < to.y);
+  const p1 = isLeftToRight ? from : to;
+  const p2 = isLeftToRight ? to : from;
+  const pdx = p2.x - p1.x;
+  const pdy = p2.y - p1.y;
+
+  const variance = ((index % 4) - 1.5) * 5;
+  const sag = Math.min(40, Math.max(12, dist * 0.15)) + variance;
+
+  // Normal pointing downward (+y, natural gravity drape) when moving left-to-right
+  let nx = -pdy / dist;
+  let ny = pdx / dist;
+  if (ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  if (Math.abs(pdx) < dist * 0.2) {
+    nx = (index % 2 === 0 ? -1 : 1) * 0.8;
+    ny = 0.2;
+  }
+
+  const dir = isLeftToRight ? 1 : -1;
+  const cp1x = Number((from.x + pdx * 0.28 * dir + nx * sag).toFixed(1));
+  const cp1y = Number((from.y + pdy * 0.28 * dir + ny * sag).toFixed(1));
+  const cp2x = Number((to.x - pdx * 0.28 * dir + nx * sag).toFixed(1));
+  const cp2y = Number((to.y - pdy * 0.28 * dir + ny * sag).toFixed(1));
+
+  return `M ${from.x} ${from.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${to.x} ${to.y}`;
+}
+
 type Wokwi = HTMLElement & Record<string, unknown>;
 /** A pin's name and where it is drawn, from its figure's top-left, in CSS px. */
 type Spot = { pin: string; x: number; y: number };
@@ -79,6 +154,8 @@ let last: number | undefined;
 let looping = false;
 /** Edited in place, so panels' ui.circuit stays the one shown. */
 let circuit: Circuit;
+/** The Nucleo board's position on the canvas. */
+let boardPos = { x: 0, y: 0 };
 /** The endpoint a wire being drawn starts at: its first pin is picked, not its second. */
 let pending: string | undefined;
 /** pinSpots() by part type. */
@@ -230,7 +307,11 @@ function pinSpots(type: string): readonly Spot[] {
 /** Where an endpoint is on the canvas; undefined if it isn't drawn (an MCU pin on no header). */
 function spot(endpoint: string): { x: number; y: number } | undefined {
   const header = HEADER.get(endpoint);
-  if (header) return { x: header.x * PX_PER_UNIT, y: header.y * PX_PER_UNIT };
+  if (header)
+    return {
+      x: boardPos.x + header.x * PX_PER_UNIT,
+      y: boardPos.y + header.y * PX_PER_UNIT,
+    };
   // An endpoint is "<id>.<pin>", and an id has no dot.
   const dot = endpoint.indexOf(".");
   const part = circuit.parts.find((p) => p.id === endpoint.slice(0, dot));
@@ -305,10 +386,10 @@ function render() {
       dots[i].firstChild!.textContent = `${p.signal} (${p.label}): ${level}`;
     }),
   );
-  place(
+  const boardFig = place(
     "mcu",
-    0,
-    0,
+    boardPos.x,
+    boardPos.y,
     board,
     Object.values(nucleo.pins).flatMap((p) =>
       p.endpoint
@@ -322,6 +403,7 @@ function render() {
         : [],
     ),
   );
+  movableBoard(boardFig);
 
   engine.view().parts.forEach((p, i) => {
     const pos = where(circuit.parts[i]);
@@ -401,9 +483,9 @@ function render() {
   t.innerHTML = `<svg id="wires" role="group" aria-label="Wires">${circuit.wires
     .map(
       ([a, b], i) =>
-        `<g class="wire" data-wire="${i}" tabindex="0" role="button" aria-label="wire ${a} to ${b}" aria-keyshortcuts="Delete"><title/><line class="hit"/><line class="line"/></g>`,
+        `<g class="wire" data-wire="${i}" tabindex="0" role="button" aria-label="wire ${a} to ${b}" aria-keyshortcuts="Delete"><title/><line class="hit straight-hit"/><path class="hit curve-hit"/><path class="wire-shadow"/><path class="line"/><circle class="wire-cap wire-cap-from" r="2.5"/><circle class="wire-cap wire-cap-to" r="2.5"/></g>`,
     )
-    .join("")}<line class="band"/></svg>`;
+    .join("")}<path class="band"/></svg>`;
   const overlay = t.content.firstElementChild!;
   $("circuit").append(overlay);
   const wires = overlay.querySelectorAll<SVGGElement>(".wire");
@@ -428,9 +510,68 @@ function drawWires() {
     const from = spot(a);
     const to = spot(b);
     lines[i].style.display = from && to ? "" : "none";
-    if (from && to)
-      for (const l of lines[i].querySelectorAll("line")) line(l, from, to);
+    if (from && to) updateWire(lines[i], from, to, i, a, b);
   });
+}
+
+function updateWire(
+  g: SVGGElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  index: number,
+  a: string,
+  b: string,
+) {
+  const d = wirePath(from, to, index);
+  const color = wireColor(a, b, index);
+  g.style.setProperty("--wire-color", color);
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const isPlug = dist < 5;
+
+  const straightHit = g.querySelector(".straight-hit");
+  if (straightHit) {
+    straightHit.setAttribute("x1", String(from.x));
+    straightHit.setAttribute("y1", String(from.y));
+    straightHit.setAttribute("x2", String(to.x));
+    straightHit.setAttribute("y2", String(to.y));
+  }
+
+  const curveHit = g.querySelector(".curve-hit");
+  if (curveHit) {
+    curveHit.setAttribute("d", d);
+  }
+
+  const lineEl = g.querySelector(".line");
+  if (lineEl) {
+    lineEl.setAttribute("x1", String(from.x));
+    lineEl.setAttribute("y1", String(from.y));
+    lineEl.setAttribute("x2", String(to.x));
+    lineEl.setAttribute("y2", String(to.y));
+    lineEl.setAttribute("d", d);
+  }
+
+  const shadow = g.querySelector(".wire-shadow");
+  if (shadow) {
+    shadow.setAttribute("d", d);
+    if (isPlug) shadow.setAttribute("display", "none");
+    else shadow.removeAttribute("display");
+  }
+
+  const capFrom = g.querySelector(".wire-cap-from");
+  if (capFrom) {
+    capFrom.setAttribute("cx", String(from.x));
+    capFrom.setAttribute("cy", String(from.y));
+    if (isPlug) capFrom.setAttribute("display", "none");
+    else capFrom.removeAttribute("display");
+  }
+
+  const capTo = g.querySelector(".wire-cap-to");
+  if (capTo) {
+    capTo.setAttribute("cx", String(to.x));
+    capTo.setAttribute("cy", String(to.y));
+    if (isPlug) capTo.setAttribute("display", "none");
+    else capTo.removeAttribute("display");
+  }
 }
 
 function line(l: Element, from: { x: number; y: number }, to = from) {
@@ -438,13 +579,58 @@ function line(l: Element, from: { x: number; y: number }, to = from) {
   l.setAttribute("y1", String(from.y));
   l.setAttribute("x2", String(to.x));
   l.setAttribute("y2", String(to.y));
+  l.setAttribute("d", `M ${from.x} ${from.y} L ${to.x} ${to.y}`);
 }
 
 /** Sizes the canvas to hold every part, so it scrolls to them. */
 function fit() {
-  const at = [{ x: 0, y: 0 }, ...circuit.parts.map(where)];
-  $("circuit").style.width = `${Math.max(...at.map((p) => p.x)) + CELL.w}px`;
-  $("circuit").style.height = `${Math.max(...at.map((p) => p.y)) + CELL.h}px`;
+  const at = [boardPos, ...circuit.parts.map(where)];
+  $("circuit").style.width = `${Math.max(...at.map((p) => p.x + (p === boardPos ? nucleo.width * PX_PER_UNIT : 0))) + CELL.w}px`;
+  $("circuit").style.height = `${Math.max(...at.map((p) => p.y + (p === boardPos ? nucleo.height * PX_PER_UNIT : 0))) + CELL.h}px`;
+}
+
+/** Drag with the pointer, or use the arrow keys to move the Nucleo board. */
+function movableBoard(fig: HTMLElement) {
+  fig.tabIndex = 0;
+  fig.title = "Drag or use the arrow keys to move the board";
+
+  const put = (pos: { x: number; y: number }) => {
+    boardPos = { x: snap(pos.x), y: snap(pos.y) };
+    fig.style.left = `${boardPos.x}px`;
+    fig.style.top = `${boardPos.y}px`;
+    fit();
+    drawWires();
+  };
+
+  fig.addEventListener("keydown", (e) => {
+    if (e.target !== fig) return;
+    const step = ARROWS[e.key];
+    if (step) {
+      e.preventDefault();
+      put({ x: boardPos.x + step[0] * GRID, y: boardPos.y + step[1] * GRID });
+    }
+  });
+
+  fig.addEventListener("pointerdown", (e) => {
+    const own = (e.target as Element).closest(".pin-target");
+    if (own || e.button !== 0) return;
+    fig.setPointerCapture(e.pointerId);
+    const from = { ...boardPos, cx: e.clientX, cy: e.clientY, z: zoom() };
+    let moved = false;
+    const drag = (e: PointerEvent) => {
+      const dx = (e.clientX - from.cx) / from.z;
+      const dy = (e.clientY - from.cy) / from.z;
+      if (!moved && Math.hypot(dx, dy) < GRID / 2) return;
+      moved = true;
+      put({ x: from.x + dx, y: from.y + dy });
+    };
+    fig.addEventListener("pointermove", drag);
+    fig.addEventListener(
+      "lostpointercapture",
+      () => fig.removeEventListener("pointermove", drag),
+      { once: true },
+    );
+  });
 }
 
 /** The canvas's CSS zoom: pointer distances divide by it. */
@@ -757,6 +943,7 @@ function mountEditing() {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = type;
+    b.dataset.type = type;
     b.draggable = true;
     b.addEventListener("click", () => add(type));
     b.addEventListener("dragstart", (e) =>
@@ -893,6 +1080,9 @@ function band(to: { x: number; y: number } | undefined) {
   if (!l || !to) return;
   l.setAttribute("x2", String(to.x));
   l.setAttribute("y2", String(to.y));
+  const fromX = Number(l.getAttribute("x1"));
+  const fromY = Number(l.getAttribute("y1"));
+  l.setAttribute("d", wirePath({ x: fromX, y: fromY }, to, 0));
 }
 
 /** Says what an edit or save did, in the header. */
