@@ -232,6 +232,11 @@ test("dragging and the arrow keys move the board, and the wires to its pins foll
   assert.equal(before.mcu, "0px 0px");
   const wire = await ends(page, 0); // mcu.PB6 to temp.SCLK
   assert.deepEqual(wire.line, wire.pins);
+  // Up and left from the top left don't move it, so Save writes no boardPos.
+  await page.locator('[data-part="mcu"]').focus();
+  for (const key of ["ArrowUp", "ArrowLeft"]) await page.keyboard.press(key);
+  await save(page);
+  assert.equal(readFileSync(file, "utf8"), readFileSync(THERMOMETER, "utf8"));
 
   // 144 × 72 screen px is 96 × 48 CSS px at zoom 1.5, then one grid step
   // right. Held by its middle: its edges are pins.

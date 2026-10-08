@@ -525,7 +525,10 @@ function movableBoard(fig: HTMLElement) {
   fig.tabIndex = 0;
   fig.title = "Drag or use the arrow keys to move the board";
   const put = (x: number, y: number) => {
-    const at = (circuit.boardPos = { x: snap(x), y: snap(y) });
+    const at = { x: snap(x), y: snap(y) };
+    // Against the canvas's edge it doesn't move: write no "boardPos" for that.
+    if (at.x === boardAt().x && at.y === boardAt().y) return;
+    circuit.boardPos = at;
     fig.style.left = `${at.x}px`;
     fig.style.top = `${at.y}px`;
     fit();
