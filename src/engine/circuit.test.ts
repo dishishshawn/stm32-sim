@@ -129,7 +129,7 @@ test("invalid input is an error naming the bad field", () => {
       'parts[0].pos.x: expected a number, got "120"',
       (c) => (c.parts[0].pos.x = "120"),
     ],
-    ["wire: unknown field (expected chip, parts, wires)", (c) => (c.wire = [])],
+    ["wire: unknown field (expected chip, parts, wires, boardPos)", (c) => (c.wire = [])],
     [
       'chip: unknown chip "stm32f411" (known: testchip)',
       (c) => (c.chip = "stm32f411"),
@@ -161,5 +161,28 @@ test("invalid input is an error naming the bad field", () => {
     () => parseCircuit("{", catalog),
     (e) =>
       e instanceof CircuitError && /^circuit: invalid JSON/.test(e.message),
+  );
+});
+
+test("boardPos, where the MCU board sits, round-trips and is checked", () => {
+  const moved = `{
+  "chip": "testchip",
+  "boardPos": { "x": 96, "y": 19.2 },
+  "parts": [],
+  "wires": []
+}
+`;
+  const c = parseCircuit(moved, catalog);
+  assert.deepEqual(c.boardPos, { x: 96, y: 19.2 });
+  assert.equal(serializeCircuit(c), moved);
+  // Absent stays absent, so files saved before boardPos existed don't change.
+  assert.equal(parseCircuit(sample, catalog).boardPos, undefined);
+  assert.throws(
+    () => parseCircuit(moved.replace('"x": 96', '"x": "left"'), catalog),
+    (e: Error) => e instanceof CircuitError && e.message.startsWith("boardPos.x: "),
+  );
+  assert.throws(
+    () => parseCircuit(moved.replace('"y": 19.2 }', '"y": 19.2, "z": 0 }'), catalog),
+    (e: Error) => e instanceof CircuitError && e.message.startsWith("boardPos"),
   );
 });

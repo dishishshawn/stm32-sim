@@ -10,6 +10,7 @@ import type { Page } from "playwright-core";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   digits,
+  ends,
   note,
   open,
   pin,
@@ -105,9 +106,9 @@ test("wiring: Escape cancels, the keyboard wires too, a wire follows its part, a
     "wiring from mcu.PA0: pick the other pin, or Escape",
   );
   const band = () =>
-    page.$eval(".band", (l) => ({
+    page.$eval(".band", (l: SVGPathElement) => ({
       shown: getComputedStyle(l).visibility === "visible",
-      x2: Number(l.getAttribute("x2")),
+      x2: Math.round(l.getPointAtLength(l.getTotalLength()).x * 10) / 10,
     }));
   const box = (await page.locator("#circuit").boundingBox())!;
   await page.mouse.move(box.x + 300, box.y + 150);
@@ -142,37 +143,35 @@ test("wiring: Escape cancels, the keyboard wires too, a wire follows its part, a
   assert.equal(await level(1), "low");
 
   // A wire's ends are its pins' centres, and follow a moved part.
-  const ends = () =>
-    page.evaluate(() => {
-      const canvas = document.getElementById("circuit")!;
-      const z = Number(getComputedStyle(canvas).zoom);
-      const c = canvas.getBoundingClientRect();
-      const centre = (e: string) => {
-        const r = document
-          .querySelector(`[data-endpoint="${e}"]`)!
-          .getBoundingClientRect();
-        return [
-          (r.x + r.width / 2 - c.x) / z,
-          (r.y + r.height / 2 - c.y) / z,
-        ].map((v) => Math.round(v * 10) / 10);
-      };
-      const l = document.querySelector('.wire[data-wire="0"] .line')!;
-      const at = (n: string) => Math.round(Number(l.getAttribute(n)) * 10) / 10;
-      return {
-        line: [at("x1"), at("y1"), at("x2"), at("y2")],
-        pins: [...centre("mcu.PA0"), ...centre("led.A")],
-      };
-    });
-  const before = await ends();
+  const before = await ends(page, 0);
   assert.deepEqual(before.line, before.pins);
   await page.locator('[data-part="led"]').focus();
   await page.keyboard.press("ArrowRight");
-  const after = await ends();
+  const after = await ends(page, 0);
   assert.deepEqual(after.line, after.pins);
   assert.equal(after.line[2], before.line[2] + 9.6);
 
-  // A click selects a wire (it takes the focus); Delete removes it.
-  await page.locator('.wire[data-wire="0"]').click();
+  // A wire sags, so the straight line between its pins is off it, and a click
+  // there finds no wire. A click on it selects it (it takes the focus); Delete
+  // removes it.
+  const at = await page.evaluate(() => {
+    const canvas = document.getElementById("circuit")!;
+    const z = Number(getComputedStyle(canvas).zoom);
+    const c = canvas.getBoundingClientRect();
+    const screen = (x: number, y: number) => [c.x + x * z, c.y + y * z];
+    const l = document.querySelector<SVGPathElement>(
+      '.wire[data-wire="0"] .line',
+    )!;
+    const n = l.getTotalLength();
+    const [a, b, mid] = [0, n, n / 2].map((d) => l.getPointAtLength(d));
+    const chord = screen((a.x + b.x) / 2, (a.y + b.y) / 2);
+    return {
+      chord: !document.elementFromPoint(chord[0], chord[1])?.closest(".wire"),
+      on: screen(mid.x, mid.y),
+    };
+  });
+  assert.ok(at.chord, "a wire under the straight line between its pins");
+  await page.mouse.click(at.on[0], at.on[1]);
   assert.equal(
     await page.evaluate(
       () => (document.activeElement as HTMLElement).dataset.wire,

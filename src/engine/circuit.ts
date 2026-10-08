@@ -3,11 +3,13 @@
 //
 // {
 //   "chip": "stm32g031k8",
+//   "boardPos": { "x": 96, "y": 0 },
 //   "parts": [{ "id": "temp", "type": "tc74", "props": { ... }, "pos": { "x": 0, "y": 0 } }],
 //   "wires": [["mcu.PB7", "temp.SDA"], ["temp.VDD", "3V3"]]
 // }
 //
-// "pos" is optional. "props" holds only what the author wrote: defaults are
+// "pos" and "boardPos" (where the MCU board is drawn; it isn't a part) are
+// optional. "props" holds only what the author wrote: defaults are
 // filled in by mountPart(), not here, so a file round-trips without growing.
 // Endpoints are "<id>.<pin>" (split at the first dot), "mcu.<pin>", "3V3" or "GND".
 import type { Part, PropValue } from "../parts/part.ts";
@@ -23,6 +25,8 @@ export interface CircuitPart {
 
 export interface Circuit {
   chip: string;
+  /** Where the MCU board sits on the canvas; absent means the top-left. */
+  boardPos?: { x: number; y: number };
   parts: CircuitPart[];
   wires: [string, string][];
 }
@@ -51,7 +55,7 @@ export function parseCircuit(text: string, catalog: CircuitCatalog): Circuit {
   } catch (e) {
     fail("circuit", `invalid JSON: ${(e as Error).message}`);
   }
-  const top = fields(raw, "", ["chip", "parts", "wires"]);
+  const top = fields(raw, "", ["chip", "parts", "wires"], ["boardPos"]);
 
   const chip = str(top.chip, "chip");
   if (!Object.hasOwn(catalog.chips, chip)) {
@@ -134,7 +138,10 @@ export function parseCircuit(text: string, catalog: CircuitCatalog): Circuit {
     return [endpoint(w[0], `${path}[0]`), endpoint(w[1], `${path}[1]`)];
   });
 
-  return { chip, parts, wires };
+  if (top.boardPos === undefined) return { chip, parts, wires };
+  const at = fields(top.boardPos, "boardPos", ["x", "y"]);
+  const boardPos = { x: num(at.x, "boardPos.x"), y: num(at.y, "boardPos.y") };
+  return { chip, boardPos, parts, wires };
 }
 
 /**
@@ -163,6 +170,9 @@ export function serializeCircuit(c: Circuit): string {
   return [
     "{",
     `  "chip": ${j(c.chip)},`,
+    ...(c.boardPos
+      ? [`  "boardPos": { "x": ${j(c.boardPos.x)}, "y": ${j(c.boardPos.y)} },`]
+      : []),
     `  "parts": ${array(c.parts.map(part))},`,
     `  "wires": ${array(c.wires.map(([a, b]) => `    [${j(a)}, ${j(b)}]`))}`,
     "}",

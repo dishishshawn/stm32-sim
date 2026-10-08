@@ -13,69 +13,244 @@
     <style>
       :root {
         color-scheme: light dark;
-        --bg: #f6f7f9;
-        --fg: #1f2328;
-        --muted: #59636e;
-        --line: #d1d9e0;
-        --focus: #0969da;
-        --high: #d1242f;
-        --low: #0969da;
-        --conflict: #bf3989;
+        --bg: #f8fafc;
+        --surface: #ffffff;
+        --surface-hover: #f1f5f9;
+        --canvas-bg: #edf2f7;
+        --fg: #0f172a;
+        --muted: #64748b;
+        --line: #cbd5e1;
+        --border-subtle: #e2e8f0;
+        --focus: #2563eb;
+        --high: #ef4444;
+        --low: #0284c7;
+        --conflict: #ec4899;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md:
+          0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #0d1117;
-          --fg: #e6edf3;
-          --muted: #9198a1;
-          --line: #3d444d;
-          --focus: #4493f8;
-          --high: #ff7b72;
-          --low: #4493f8;
-          --conflict: #f778ba;
+          --bg: #090d16;
+          --surface: #111827;
+          --surface-hover: #1e293b;
+          --canvas-bg: #0c111c;
+          --fg: #f8fafc;
+          --muted: #94a3b8;
+          --line: #1e293b;
+          --border-subtle: #1e293b;
+          --focus: #3b82f6;
+          --high: #f87171;
+          --low: #38bdf8;
+          --conflict: #f472b6;
+          --success: #34d399;
+          --warning: #fbbf24;
+          --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+          --shadow-md:
+            0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
         }
       }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
         font:
-          15px/1.4 system-ui,
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          "Inter",
+          ui-sans-serif,
+          system-ui,
           sans-serif;
         background: var(--bg);
         color: var(--fg);
+        -webkit-font-smoothing: antialiased;
       }
+
       header {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem 1.5rem;
-        align-items: baseline;
-        padding: 0.5rem 1rem;
+        gap: 0.5rem 1.25rem;
+        align-items: center;
+        padding: 0.5rem 1.25rem;
+        background: var(--surface);
         border-bottom: 1px solid var(--line);
+        box-shadow: var(--shadow-sm);
+        z-index: 10;
+        position: relative;
       }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .brand-icon {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+
       h1 {
-        font-size: 1rem;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
         margin: 0;
+        color: var(--fg);
       }
+
+      .chip-badge {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--focus) 12%, transparent);
+        color: var(--focus);
+        border: 1px solid color-mix(in srgb, var(--focus) 25%, transparent);
+      }
+
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.2rem 0.55rem;
+        background: color-mix(in srgb, var(--fg) 4%, transparent);
+        border-radius: 9999px;
+        border: 1px solid var(--border-subtle);
+      }
+
       header p {
         margin: 0;
         color: var(--muted);
+        font-size: 13px;
         font-variant-numeric: tabular-nums;
       }
+
+      #run {
+        font-weight: 600;
+        color: var(--fg);
+      }
+
+      .timer-display {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.6rem;
+        background: color-mix(in srgb, var(--fg) 4%, transparent);
+        border-radius: 6px;
+        border: 1px solid var(--border-subtle);
+        font-family: ui-monospace, "SF Mono", monospace;
+        font-size: 12px;
+      }
+
+      .timer-icon {
+        color: var(--muted);
+      }
+
+      #time {
+        font-weight: 600;
+        color: var(--fg);
+      }
+
+      #edit {
+        font-size: 12px;
+        color: var(--muted);
+        font-style: italic;
+      }
+      #edit:not(:empty) {
+        padding: 0.2rem 0.5rem;
+        background: color-mix(in srgb, var(--focus) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--focus) 20%, transparent);
+        border-radius: 4px;
+        color: var(--focus);
+        font-style: normal;
+      }
+
       #toolbar {
         display: flex;
-        gap: 0.5rem;
+        align-items: center;
+        gap: 0.4rem;
         margin-left: auto;
       }
+
+      #toolbar button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--fg);
+        font:
+          13px/1.2 system-ui,
+          sans-serif;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        box-shadow: var(--shadow-sm);
+      }
+      #toolbar button:hover:not(:disabled) {
+        background: var(--surface-hover);
+        border-color: var(--focus);
+        color: var(--focus);
+      }
+      #toolbar button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      #toolbar label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      #toolbar select {
+        padding: 0.28rem 0.5rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--fg);
+        font:
+          12px/1.2 system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+
       .layout {
         display: grid;
-        grid-template-columns: 1fr minmax(18rem, 30rem);
-        height: calc(100vh - 2.6rem);
+        grid-template-columns: 1fr minmax(19rem, 30rem);
+        height: calc(100vh - 3.25rem);
       }
+
       main {
         overflow: auto;
-        padding: 1rem;
+        padding: 1.25rem;
+        background-color: var(--canvas-bg);
+        background-image: radial-gradient(
+          circle,
+          color-mix(in srgb, var(--muted) 30%, transparent) 1.2px,
+          transparent 1.2px
+        );
+        background-size: 19.2px 19.2px;
       }
+
       #panels {
         overflow: auto;
+        background: var(--surface);
         border-left: 1px solid var(--line);
+        box-shadow: -2px 0 6px rgba(0, 0, 0, 0.02);
       }
       #panels:empty {
         display: none;
@@ -83,17 +258,23 @@
       .layout:has(#panels:empty) {
         grid-template-columns: 1fr;
       }
+
       .panel {
-        padding: 0.5rem 1rem 1rem;
+        padding: 0.75rem 1.25rem 1.25rem;
         border-bottom: 1px solid var(--line);
       }
       .panel h2 {
-        font-size: 0.85rem;
-        margin: 0 0 0.5rem;
-        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
+        margin: 0 0 0.65rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
       }
+
       @media (max-width: 50rem) {
         .layout {
           grid-template-columns: 1fr;
@@ -104,44 +285,112 @@
           border-top: 1px solid var(--line);
         }
       }
-      /* Parts sit at their circuit "pos", in CSS px at 96 per inch, zoomed for reading.
-         Stacked bottom to top: breadboards, the board, wires, parts (so a part
-         under a wire can still be dragged), the board's pins. */
+
+      /* Parts sit at their circuit "pos", in CSS px at 96 per inch, zoomed for reading. */
       #circuit {
         position: relative;
         zoom: 1.5;
         isolation: isolate;
+        min-height: 400px;
       }
+
       figure[data-type] {
         z-index: 1;
       }
       figure[data-type="breadboard"] {
         z-index: -1;
       }
-      /* The palette and Save. */
+
+      /* The palette shelf and Save button. */
       .edit {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: 0.75rem;
         align-items: center;
-        margin-bottom: 1rem;
+        margin-bottom: 1.25rem;
+        padding: 0.5rem 0.85rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
       }
+
       #palette {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem;
+        gap: 0.35rem;
         align-items: center;
       }
-      #save {
-        margin-left: auto;
+
+      #palette-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-right: 0.25rem;
       }
-      /* A part moves by dragging it. */
+
+      #palette button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--fg);
+        font:
+          12px/1.2 system-ui,
+          sans-serif;
+        font-weight: 500;
+        cursor: grab;
+        transition: all 0.15s ease;
+        box-shadow: var(--shadow-sm);
+      }
+      #palette button:hover {
+        background: var(--surface-hover);
+        border-color: var(--focus);
+        color: var(--focus);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
+      }
+      #palette button:active {
+        transform: translateY(0);
+      }
+
+      #save {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.85rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: #10b981;
+        color: #ffffff;
+        font:
+          13px/1.2 system-ui,
+          sans-serif;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        box-shadow: 0 1px 2px rgba(16, 185, 129, 0.3);
+      }
+      #save:hover {
+        background: #059669;
+        box-shadow: 0 2px 5px rgba(16, 185, 129, 0.4);
+        transform: translateY(-1px);
+      }
+      #save:active {
+        transform: translateY(0);
+      }
+
+      /* Figures and components */
       figure[tabindex] {
         cursor: grab;
         touch-action: none;
         user-select: none;
       }
-      /* A part's top-left is its "pos": a pin is at pos plus its pinInfo or art position. */
       figure {
         position: absolute;
         margin: 0;
@@ -154,26 +403,50 @@
         position: relative;
         display: flex;
       }
-      /* Each pin's target: click one, then another, to wire them. */
+
+      /* Gold-plated / precision circular pin terminals */
       .pin-target {
         position: absolute;
         z-index: 2;
         box-sizing: border-box;
-        width: 6px;
-        height: 6px;
-        margin: -3px 0 0 -3px;
+        width: 8px;
+        height: 8px;
+        margin: -4px 0 0 -4px;
         padding: 0;
-        border: 1px solid var(--muted);
+        border: 1.5px solid color-mix(in srgb, var(--fg) 40%, transparent);
         border-radius: 50%;
-        background: transparent;
+        background: color-mix(in srgb, var(--surface) 85%, transparent);
         cursor: crosshair;
+        transition:
+          transform 0.12s ease,
+          border-color 0.12s ease,
+          background 0.12s ease;
       }
       .pin-target:hover,
-      .pin-target:focus-visible,
-      .pin-target.from {
+      .pin-target:focus-visible {
+        transform: scale(1.4);
         background: var(--focus);
-        border-color: var(--focus);
+        border-color: #ffffff;
+        box-shadow: 0 0 6px var(--focus);
       }
+      .pin-target.from {
+        transform: scale(1.4);
+        background: var(--high);
+        border-color: #ffffff;
+        box-shadow: 0 0 8px var(--high);
+        animation: pulse-pin 1.2s infinite;
+      }
+      @keyframes pulse-pin {
+        0%,
+        100% {
+          transform: scale(1.3);
+        }
+        50% {
+          transform: scale(1.6);
+        }
+      }
+
+      /* Realistic Curved Jumper Wires */
       #wires {
         position: absolute;
         left: 0;
@@ -184,65 +457,118 @@
         pointer-events: none;
         z-index: 0;
       }
-      #wires line {
-        stroke-linecap: round;
+      .wire {
+        cursor: pointer;
       }
-      /* A wider, invisible line to click; none while a wire is being drawn, so pins under wires stay reachable. */
+      .wire .wire-shadow {
+        fill: none;
+        stroke: rgba(0, 0, 0, 0.14);
+        stroke-width: 3.5px;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transform: translateY(2px);
+        pointer-events: none;
+      }
       .wire .hit {
+        fill: none;
         stroke: transparent;
-        stroke-width: 6px;
+        stroke-width: 8px;
+        stroke-linecap: round;
+        stroke-linejoin: round;
         pointer-events: stroke;
         cursor: pointer;
       }
       #circuit[data-wiring] .wire .hit {
         pointer-events: none;
       }
-      /* Coloured by the net's level, as the board's pins are; floating is dashed. */
       .wire .line {
+        fill: none;
         stroke: var(--muted);
-        stroke-width: 1.5px;
+        stroke-width: 2.8px;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transition:
+          stroke 0.15s ease,
+          stroke-width 0.15s ease;
       }
+      .wire .wire-cap {
+        fill: var(--muted);
+        stroke: rgba(0, 0, 0, 0.35);
+        stroke-width: 0.8px;
+        pointer-events: none;
+      }
+      /* A plug, a pin in a breadboard hole, has no length to show its ends. */
+      .wire[data-plug] .wire-shadow,
+      .wire[data-plug] .wire-cap {
+        display: none;
+      }
+      /* Coloured by the net's level, as the board's pins are; floating is dashed. */
       .wire[data-level="floating"] .line {
-        stroke-dasharray: 3 2;
+        stroke-dasharray: 4 3;
+        opacity: 0.85;
       }
       .wire[data-level="high"] .line {
         stroke: var(--high);
       }
+      .wire[data-level="high"] .wire-cap {
+        fill: var(--high);
+      }
       .wire[data-level="low"] .line {
         stroke: var(--low);
+      }
+      .wire[data-level="low"] .wire-cap {
+        fill: var(--low);
       }
       .wire[data-level="conflict"] .line {
         stroke: var(--conflict);
       }
-      /* Selected: focused, by a click or Tab. */
+      .wire[data-level="conflict"] .wire-cap {
+        fill: var(--conflict);
+      }
+      .wire:hover .line {
+        stroke-width: 4px;
+      }
       .wire:focus {
         outline: none;
       }
       .wire:focus .line {
-        stroke-width: 3px;
+        stroke-width: 4.5px;
+        stroke: var(--focus) !important;
       }
-      .wire:focus .hit {
-        stroke: color-mix(in srgb, var(--focus) 35%, transparent);
+      .wire:focus .wire-cap {
+        fill: var(--focus) !important;
       }
+
       .band {
+        fill: none;
         stroke: var(--focus);
-        stroke-width: 1.5px;
-        stroke-dasharray: 2 2;
+        stroke-width: 2.5px;
+        stroke-linecap: round;
+        stroke-dasharray: 4 3;
         visibility: hidden;
       }
       #circuit[data-wiring] .band {
         visibility: visible;
       }
+
       figcaption,
       .control {
-        font-size: 8px;
+        font-size: 9px;
+        font-family: ui-monospace, "SF Mono", monospace;
         color: var(--muted);
       }
+      figcaption {
+        font-weight: 600;
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+
       .control,
       .control label {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 5px;
       }
       .control input {
         width: 70px;
@@ -253,24 +579,29 @@
         color: var(--fg);
         font-variant-numeric: tabular-nums;
       }
-      /* A part with neither a wokwi element nor art yet. */
+
       .chip {
         box-sizing: border-box;
         border: 1px solid var(--line);
-        border-radius: 3px;
+        border-radius: 4px;
+        background: var(--surface);
         padding: 8px 12px;
         font:
-          10px ui-monospace,
+          11px ui-monospace,
           monospace;
+        box-shadow: var(--shadow-sm);
       }
+
       :focus-visible,
       wokwi-pushbutton:focus-within {
         outline: 2px solid var(--focus);
-        outline-offset: 2px;
+        outline-offset: 3px;
       }
-      /* The Nucleo's header pins, coloured by their net's level. */
+
+      /* Nucleo header pins coloured by net level */
       .pin {
         fill: transparent;
+        transition: fill 0.15s ease;
       }
       .pin[data-level="high"] {
         fill: var(--high);
@@ -285,10 +616,18 @@
   </head>
   <body>
     <header>
-      <h1>stm32-sim</h1>
-      <p><span id="run" role="status">loading</span></p>
-      <p><span id="time">0.000</span> s simulated</p>
-      <!-- What the last edit or save did, e.g. "added led1: simulation restarted". -->
+      <div class="brand">
+        <span class="brand-icon">⚡</span>
+        <h1>stm32-sim</h1>
+        <span class="chip-badge">NUCLEO-G031K8</span>
+      </div>
+      <div class="status-pill">
+        <p><span id="run" role="status">loading</span></p>
+      </div>
+      <div class="timer-display">
+        <span class="timer-icon">⏱</span>
+        <p><span id="time">0.000</span> s simulated</p>
+      </div>
       <p><span id="edit" role="status"></span></p>
       <div id="toolbar" role="toolbar" aria-label="Run controls"></div>
     </header>
