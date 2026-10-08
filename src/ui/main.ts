@@ -51,33 +51,6 @@ const ELEMENT: Record<string, string> = {
   resistor: "wokwi-resistor",
 };
 
-/** Palette of vibrant jumper wire colors. */
-const WIRE_COLORS = [
-  "#2563eb", // blue
-  "#16a34a", // emerald green
-  "#d97706", // amber
-  "#9333ea", // purple
-  "#db2777", // pink
-  "#0284c7", // sky
-  "#ea580c", // orange
-  "#0d9488", // teal
-];
-
-function wireColor(a: string, b: string, index: number): string {
-  const isPower = (ep: string) =>
-    ep === "3V3" || ep.endsWith(".VDD") || ep.endsWith(".V+");
-  const isGnd = (ep: string) => ep === "GND" || ep.endsWith(".GND");
-  const isScl = (ep: string) => ep.includes("SCL") || ep.includes("PB6");
-  const isSda = (ep: string) => ep.includes("SDA") || ep.includes("PB7");
-
-  if (isPower(a) || isPower(b)) return "#ef4444";
-  if (isGnd(a) || isGnd(b)) return "#334155";
-  if (isScl(a) || isScl(b)) return "#f59e0b";
-  if (isSda(a) || isSda(b)) return "#06b6d4";
-
-  return WIRE_COLORS[index % WIRE_COLORS.length];
-}
-
 /**
  * Calculates a smooth cubic Bezier arc for jumper wires.
  * Eliminates the chaotic "spiderweb" effect by fanning out parallel wires.
@@ -154,8 +127,6 @@ let last: number | undefined;
 let looping = false;
 /** Edited in place, so panels' ui.circuit stays the one shown. */
 let circuit: Circuit;
-/** The Nucleo board's position on the canvas. */
-let boardPos = { x: 0, y: 0 };
 /** The endpoint a wire being drawn starts at: its first pin is picked, not its second. */
 let pending: string | undefined;
 /** pinSpots() by part type. */
@@ -261,6 +232,10 @@ function cell(i: number) {
     y: TOP + Math.floor(i / COLUMNS) * CELL.h,
   };
 }
+/** Where the board is drawn: its "boardPos", else the top left. */
+function boardAt() {
+  return circuit.boardPos ?? { x: 0, y: 0 };
+}
 /** Where a part is drawn: its "pos", else its cell. */
 function where(p: CircuitPart) {
   return p.pos ?? cell(circuit.parts.indexOf(p));
@@ -307,11 +282,13 @@ function pinSpots(type: string): readonly Spot[] {
 /** Where an endpoint is on the canvas; undefined if it isn't drawn (an MCU pin on no header). */
 function spot(endpoint: string): { x: number; y: number } | undefined {
   const header = HEADER.get(endpoint);
-  if (header)
+  if (header) {
+    const at = boardAt();
     return {
-      x: boardPos.x + header.x * PX_PER_UNIT,
-      y: boardPos.y + header.y * PX_PER_UNIT,
+      x: at.x + header.x * PX_PER_UNIT,
+      y: at.y + header.y * PX_PER_UNIT,
     };
+  }
   // An endpoint is "<id>.<pin>", and an id has no dot.
   const dot = endpoint.indexOf(".");
   const part = circuit.parts.find((p) => p.id === endpoint.slice(0, dot));
@@ -323,7 +300,7 @@ function spot(endpoint: string): { x: number; y: number } | undefined {
 }
 
 /**
- * The board at the top left, each part at its "pos" or in the grid, and the
+ * The board at its "boardPos", each part at its "pos" or in the grid, and the
  * wires over them. Every pin gets a button: click one, then another, to wire them.
  */
 function render() {
@@ -388,8 +365,8 @@ function render() {
   );
   const boardFig = place(
     "mcu",
-    boardPos.x,
-    boardPos.y,
+    boardAt().x,
+    boardAt().y,
     board,
     Object.values(nucleo.pins).flatMap((p) =>
       p.endpoint
@@ -483,7 +460,7 @@ function render() {
   t.innerHTML = `<svg id="wires" role="group" aria-label="Wires">${circuit.wires
     .map(
       ([a, b], i) =>
-        `<g class="wire" data-wire="${i}" tabindex="0" role="button" aria-label="wire ${a} to ${b}" aria-keyshortcuts="Delete"><title/><line class="hit straight-hit"/><path class="hit curve-hit"/><path class="wire-shadow"/><path class="line"/><circle class="wire-cap wire-cap-from" r="2.5"/><circle class="wire-cap wire-cap-to" r="2.5"/></g>`,
+        `<g class="wire" data-wire="${i}" tabindex="0" role="button" aria-label="wire ${a} to ${b}" aria-keyshortcuts="Delete"><title/><path class="hit"/><path class="wire-shadow"/><path class="line"/><circle class="wire-cap" r="2.5"/><circle class="wire-cap" r="2.5"/></g>`,
     )
     .join("")}<path class="band"/></svg>`;
   const overlay = t.content.firstElementChild!;
@@ -503,126 +480,76 @@ function render() {
   if (!circuit.parts.some((p) => p.id === selected)) select(undefined);
 }
 
-/** Puts each wire between its pins' spots. A wire to a pin that isn't drawn is hidden. */
+/**
+ * Puts each wire between its pins' spots. A wire to a pin that isn't drawn is
+ * hidden. A plug (a pin in a breadboard hole) is too short to show its ends.
+ */
 function drawWires() {
   const lines = $("circuit").querySelectorAll<SVGGElement>(".wire");
   circuit.wires.forEach(([a, b], i) => {
     const from = spot(a);
     const to = spot(b);
     lines[i].style.display = from && to ? "" : "none";
-    if (from && to) updateWire(lines[i], from, to, i, a, b);
+    if (!from || !to) return;
+    const d = wirePath(from, to, i);
+    for (const p of lines[i].querySelectorAll("path")) p.setAttribute("d", d);
+    lines[i].querySelectorAll("circle").forEach((cap, end) => {
+      cap.setAttribute("cx", String(end ? to.x : from.x));
+      cap.setAttribute("cy", String(end ? to.y : from.y));
+    });
+    const plug = Math.hypot(to.x - from.x, to.y - from.y) < 5;
+    lines[i].toggleAttribute("data-plug", plug);
   });
 }
 
-function updateWire(
-  g: SVGGElement,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-  index: number,
-  a: string,
-  b: string,
-) {
-  const d = wirePath(from, to, index);
-  const color = wireColor(a, b, index);
-  g.style.setProperty("--wire-color", color);
-  const dist = Math.hypot(to.x - from.x, to.y - from.y);
-  const isPlug = dist < 5;
-
-  const straightHit = g.querySelector(".straight-hit");
-  if (straightHit) {
-    straightHit.setAttribute("x1", String(from.x));
-    straightHit.setAttribute("y1", String(from.y));
-    straightHit.setAttribute("x2", String(to.x));
-    straightHit.setAttribute("y2", String(to.y));
-  }
-
-  const curveHit = g.querySelector(".curve-hit");
-  if (curveHit) {
-    curveHit.setAttribute("d", d);
-  }
-
-  const lineEl = g.querySelector(".line");
-  if (lineEl) {
-    lineEl.setAttribute("x1", String(from.x));
-    lineEl.setAttribute("y1", String(from.y));
-    lineEl.setAttribute("x2", String(to.x));
-    lineEl.setAttribute("y2", String(to.y));
-    lineEl.setAttribute("d", d);
-  }
-
-  const shadow = g.querySelector(".wire-shadow");
-  if (shadow) {
-    shadow.setAttribute("d", d);
-    if (isPlug) shadow.setAttribute("display", "none");
-    else shadow.removeAttribute("display");
-  }
-
-  const capFrom = g.querySelector(".wire-cap-from");
-  if (capFrom) {
-    capFrom.setAttribute("cx", String(from.x));
-    capFrom.setAttribute("cy", String(from.y));
-    if (isPlug) capFrom.setAttribute("display", "none");
-    else capFrom.removeAttribute("display");
-  }
-
-  const capTo = g.querySelector(".wire-cap-to");
-  if (capTo) {
-    capTo.setAttribute("cx", String(to.x));
-    capTo.setAttribute("cy", String(to.y));
-    if (isPlug) capTo.setAttribute("display", "none");
-    else capTo.removeAttribute("display");
-  }
-}
-
-function line(l: Element, from: { x: number; y: number }, to = from) {
-  l.setAttribute("x1", String(from.x));
-  l.setAttribute("y1", String(from.y));
-  l.setAttribute("x2", String(to.x));
-  l.setAttribute("y2", String(to.y));
-  l.setAttribute("d", `M ${from.x} ${from.y} L ${to.x} ${to.y}`);
-}
-
-/** Sizes the canvas to hold every part, so it scrolls to them. */
+/** Sizes the canvas to hold the board and every part, so it scrolls to them. */
 function fit() {
-  const at = [boardPos, ...circuit.parts.map(where)];
-  $("circuit").style.width = `${Math.max(...at.map((p) => p.x + (p === boardPos ? nucleo.width * PX_PER_UNIT : 0))) + CELL.w}px`;
-  $("circuit").style.height = `${Math.max(...at.map((p) => p.y + (p === boardPos ? nucleo.height * PX_PER_UNIT : 0))) + CELL.h}px`;
+  const board = boardAt();
+  const at = [
+    {
+      x: board.x + nucleo.width * PX_PER_UNIT,
+      y: board.y + nucleo.height * PX_PER_UNIT,
+    },
+    ...circuit.parts.map(where),
+  ];
+  $("circuit").style.width = `${Math.max(...at.map((p) => p.x)) + CELL.w}px`;
+  $("circuit").style.height = `${Math.max(...at.map((p) => p.y)) + CELL.h}px`;
 }
 
-/** Drag with the pointer, or use the arrow keys to move the Nucleo board. */
+/**
+ * Drag the board with the pointer, or the arrow keys for one grid step; either
+ * writes "boardPos", and the wires to its pins follow. Its pins keep their own
+ * pointer.
+ */
 function movableBoard(fig: HTMLElement) {
   fig.tabIndex = 0;
   fig.title = "Drag or use the arrow keys to move the board";
-
-  const put = (pos: { x: number; y: number }) => {
-    boardPos = { x: snap(pos.x), y: snap(pos.y) };
-    fig.style.left = `${boardPos.x}px`;
-    fig.style.top = `${boardPos.y}px`;
+  const put = (x: number, y: number) => {
+    const at = (circuit.boardPos = { x: snap(x), y: snap(y) });
+    fig.style.left = `${at.x}px`;
+    fig.style.top = `${at.y}px`;
     fit();
     drawWires();
   };
-
   fig.addEventListener("keydown", (e) => {
-    if (e.target !== fig) return;
+    if (e.target !== fig) return; // the pins' keys are their own
     const step = ARROWS[e.key];
-    if (step) {
-      e.preventDefault();
-      put({ x: boardPos.x + step[0] * GRID, y: boardPos.y + step[1] * GRID });
-    }
+    if (!step) return;
+    e.preventDefault();
+    put(boardAt().x + step[0] * GRID, boardAt().y + step[1] * GRID);
   });
-
   fig.addEventListener("pointerdown", (e) => {
-    const own = (e.target as Element).closest(".pin-target");
-    if (own || e.button !== 0) return;
+    if ((e.target as Element).closest(".pin-target") || e.button !== 0) return;
     fig.setPointerCapture(e.pointerId);
-    const from = { ...boardPos, cx: e.clientX, cy: e.clientY, z: zoom() };
+    const from = { ...boardAt(), cx: e.clientX, cy: e.clientY, z: zoom() };
     let moved = false;
     const drag = (e: PointerEvent) => {
       const dx = (e.clientX - from.cx) / from.z;
       const dy = (e.clientY - from.cy) / from.z;
+      // A click isn't a move: it would write a "boardPos" for nothing.
       if (!moved && Math.hypot(dx, dy) < GRID / 2) return;
       moved = true;
-      put({ x: from.x + dx, y: from.y + dy });
+      put(from.x + dx, from.y + dy);
     };
     fig.addEventListener("pointermove", drag);
     fig.addEventListener(
@@ -1049,7 +976,7 @@ function pick(pin: HTMLElement) {
     pending = endpoint;
     pin.classList.add("from");
     $("circuit").dataset.wiring = "";
-    line($("circuit").querySelector(".band")!, spot(endpoint)!);
+    band(spot(endpoint));
     note(`wiring from ${endpoint}: pick the other pin, or Escape`);
     return;
   }
@@ -1074,15 +1001,11 @@ function stop() {
   document.querySelector(".pin-target.from")?.classList.remove("from");
 }
 
-/** Moves the free end of the rubber band. */
+/** Moves the free end of the rubber band; the other is on the pin it starts at. */
 function band(to: { x: number; y: number } | undefined) {
-  const l = $("circuit").querySelector(".band");
-  if (!l || !to) return;
-  l.setAttribute("x2", String(to.x));
-  l.setAttribute("y2", String(to.y));
-  const fromX = Number(l.getAttribute("x1"));
-  const fromY = Number(l.getAttribute("y1"));
-  l.setAttribute("d", wirePath({ x: fromX, y: fromY }, to, 0));
+  const from = pending === undefined ? undefined : spot(pending);
+  if (from && to)
+    $("circuit").querySelector(".band")?.setAttribute("d", wirePath(from, to));
 }
 
 /** Says what an edit or save did, in the header. */

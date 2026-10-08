@@ -16,7 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
-import { digits, open, root, until } from "./harness.ts";
+import { digits, ends, open, root, until } from "./harness.ts";
 
 const THERMOMETER = join(root, "firmware/thermometer/circuit.json");
 
@@ -209,7 +209,10 @@ test("the save route refuses a body parseCircuit rejects, and a PUT from anywher
   ]);
   // From outside the page: no Origin, or another site's.
   const valid = readFileSync(file, "utf8");
-  const origins: Record<string, string>[] = [{}, { Origin: "http://evil.example" }];
+  const origins: Record<string, string>[] = [
+    {},
+    { Origin: "http://evil.example" },
+  ];
   for (const headers of origins) {
     const r = await fetch(`${page.url()}circuit`, {
       method: "PUT",
@@ -222,16 +225,48 @@ test("the save route refuses a body parseCircuit rejects, and a PUT from anywher
   assert.equal(readFileSync(file, "utf8"), readFileSync(THERMOMETER, "utf8"));
 });
 
-test("the Nucleo board moves with drag and arrow keys, and connected wires follow", async (t) => {
+test("dragging and the arrow keys move the board, and the wires to its pins follow; Save writes boardPos, and a reload shows the same layout", async (t) => {
   const file = copy(t);
   const { page, problems } = await open(t, "thermometer", file);
   const before = await layout(page);
   assert.equal(before.mcu, "0px 0px");
+  const wire = await ends(page, 0); // mcu.PB6 to temp.SCLK
+  assert.deepEqual(wire.line, wire.pins);
 
+  // 144 × 72 screen px is 96 × 48 CSS px at zoom 1.5, then one grid step
+  // right. Held by its middle: its edges are pins.
+  const box = (await page
+    .locator('[data-part="mcu"] svg')
+    .first()
+    .boundingBox())!;
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(mid.x, mid.y);
+  await page.mouse.down();
+  await page.mouse.move(mid.x + 144, mid.y + 72, { steps: 5 });
+  await page.mouse.up();
   await page.locator('[data-part="mcu"]').focus();
   await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowDown");
   const moved = await layout(page);
-  assert.equal(moved.mcu, "9.6px 9.6px");
+  assert.deepEqual(moved, { ...before, mcu: "105.6px 48px" });
+
+  // The board's end of the wire moved with it; the TC74's stayed.
+  const after = await ends(page, 0);
+  assert.deepEqual(after.line, after.pins);
+  assert.deepEqual(
+    after.line.map((v, i) => Math.round((v - wire.line[i]) * 10) / 10),
+    [105.6, 48, 0, 0],
+  );
+
+  await save(page);
+  const text = readFileSync(file, "utf8");
+  assert.ok(text.includes('"boardPos": { "x": 105.6, "y": 48 },'), text);
+  assert.ok(!text.includes('"pos"'), "no part moved");
+
+  await page.reload();
+  await page.waitForFunction(
+    () => document.getElementById("run")!.textContent === "running",
+  );
+  assert.deepEqual(await layout(page), moved);
+  assert.deepEqual(await ends(page, 0), after);
   assert.deepEqual(problems, []);
 });

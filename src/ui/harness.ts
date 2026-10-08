@@ -159,6 +159,33 @@ export async function wire(page: Page, a: string, b: string) {
   );
 }
 
+/**
+ * Wire `i`'s drawn ends and its pins' centres, [x1, y1, x2, y2] each, in
+ * canvas px to 0.1: equal when the wire is on its pins.
+ */
+export const ends = (page: Page, i: number) =>
+  page.evaluate((i) => {
+    const canvas = document.getElementById("circuit")!;
+    const z = Number(getComputedStyle(canvas).zoom);
+    const c = canvas.getBoundingClientRect();
+    const round = (v: number) => Math.round(v * 10) / 10;
+    const centre = (e: string) => {
+      const r = document
+        .querySelector(`[data-endpoint="${e}"]`)!
+        .getBoundingClientRect();
+      return [(r.x + r.width / 2 - c.x) / z, (r.y + r.height / 2 - c.y) / z];
+    };
+    const g = document.querySelector(`.wire[data-wire="${i}"]`)!;
+    const l = g.querySelector<SVGPathElement>(".line")!;
+    const [a, b] = [0, l.getTotalLength()].map((n) => l.getPointAtLength(n));
+    // Its label is "wire <a> to <b>".
+    const [, from, to] = g.getAttribute("aria-label")!.split(/^wire | to /);
+    return {
+      line: [a.x, a.y, b.x, b.y].map(round),
+      pins: [...centre(from), ...centre(to)].map(round),
+    };
+  }, i);
+
 /** Clicks Save and returns the circuit file it wrote. */
 export async function save(page: Page, file: string) {
   await page.click("#save");
