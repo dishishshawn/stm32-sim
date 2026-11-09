@@ -60,6 +60,8 @@ export interface Halt {
 export interface Snapshot {
   /** CPU cycles since reset. */
   cycles: number;
+  /** Of those, the cycles the core spent asleep in WFI. */
+  sleepCycles: number;
   /** Simulated seconds since reset: each cycle at the core clock (HCLK) of its moment. */
   seconds: number;
   pc: number;
@@ -143,6 +145,8 @@ interface Board {
   /** Part ticks so far, and the cycle the next one is due at. */
   partTicks: number;
   nextPartTick: number;
+  /** Cycles spent asleep in WFI since reset. */
+  sleepCycles: number;
   circuit: Circuit;
   /** setPropAt() changes not yet due, by time; equal times in the order scheduled. `at` is the time's cycle. */
   changes: {
@@ -252,6 +256,7 @@ export class Engine {
       end: 0,
       partTicks: 0,
       nextPartTick: Math.round(chip.clockHz * PART_TICK_SECONDS),
+      sleepCycles: 0,
       circuit,
       changes: [],
     };
@@ -339,6 +344,7 @@ export class Engine {
     const { chip, elf, nets, bus, core, parts } = b;
     return {
       cycles: core.cycles,
+      sleepCycles: b.sleepCycles,
       seconds: secondsAt(b, core.cycles),
       pc: core.PC,
       at: where(elf, core.PC),
@@ -444,6 +450,7 @@ export class Engine {
         Math.min(end, b.nextPartTick, b.changes[0]?.at ?? Infinity) -
         core.cycles;
       core.cycles += cycles;
+      b.sleepCycles += cycles;
     } else {
       this.#pc = core.PC;
       const inHardFault = core.IPSR === HARDFAULT;

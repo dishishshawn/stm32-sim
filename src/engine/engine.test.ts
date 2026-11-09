@@ -173,6 +173,24 @@ test("WFI with nothing to wake it: time passes, and the run ends on time", () =>
   assert.equal(s.halt, null);
 });
 
+test("sleepCycles counts the cycles asleep in WFI, and only those", () => {
+  const elf = blinkElf();
+  const main = loadElf(elf).symbol("main")!;
+  const { engine } = load(patch(elf, { [main]: 0xbf30bf30 })); // WFI; WFI
+  // Awake until the first WFI has executed: startup, then the WFI itself.
+  while (engine.snapshot().pc !== main + 2) engine.step();
+  const awake = engine.snapshot();
+  assert.equal(awake.sleepCycles, 0);
+  engine.runFor(1);
+  const s = engine.snapshot();
+  assert.equal(s.sleepCycles, s.cycles - awake.cycles);
+
+  // Blink busy-waits: never asleep.
+  const { engine: busy } = load(blinkElf());
+  busy.runFor(0.3);
+  assert.equal(busy.snapshot().sleepCycles, 0);
+});
+
 test("parts tick in simulated time, and the snapshot carries their state()", () => {
   const engine = new Engine();
   const circuit = parseCircuit(

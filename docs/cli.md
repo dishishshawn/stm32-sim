@@ -225,6 +225,7 @@ are hex strings (`"0x08000154"`); bit-field values are numbers.
   "message": "HardFault: undefined instruction 0xdeff at firmware/hardfault/main.c:8",
   "seconds": 0.0010000625,
   "cycles": 16001,
+  "sleepCycles": 0,
   "pc": "0x080001a9",
   "at": "vendor/cmsis-device-g0/startup_stm32g031xx.s:118",
   "halt": null,
@@ -248,6 +249,7 @@ are hex strings (`"0x08000154"`); bit-field values are numbers.
 | `message`     | one line for a person, e.g. the line above                                                                                               |
 | `seconds`     | simulated time at the end, each cycle at the core clock of its moment. A run stops at the first instruction at or past `--for`           |
 | `cycles`      | CPU cycles since reset                                                                                                                   |
+| `sleepCycles` | of `cycles`, those the core spent asleep in WFI; `cycles - sleepCycles` are the active ones (added by S1; version stays 1)               |
 | `pc`          | the PC at the end                                                                                                                        |
 | `at`          | the PC as `file:line`, else `function+0xoffset`, else the address                                                                        |
 | `halt`        | why the CPU stopped early: `{ "kind": "lockup" \| "breakpoint", "reason": "BKPT #7" }`, else `null`                                      |

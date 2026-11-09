@@ -128,6 +128,22 @@ test("inspect prints the clocks: MHz in text, Hz in --json", () => {
   assert.equal(JSON.parse(run.stdout).clocks, undefined);
 });
 
+test("run and inspect --json report sleepCycles: the cycles asleep in WFI", () => {
+  for (const command of ["run", "inspect"]) {
+    const t = command === "run" ? "--for" : "--at";
+    const asleep = JSON.parse(
+      sim(command, elf("wfi-fixture"), t, "100ms", "--json").stdout,
+    );
+    // All but startup: well under a part tick (1 ms = 16,000 cycles) awake.
+    const awake = asleep.cycles - asleep.sleepCycles;
+    assert.ok(awake > 0 && awake < 16_000, `${command}: ${awake} awake`);
+    const busy = JSON.parse(
+      sim(command, elf("blink"), ...BLINK, t, "100ms", "--json").stdout,
+    );
+    assert.equal(busy.sleepCycles, 0, command);
+  }
+});
+
 test("inspect on tc74-read: the I2C trace is one line per step in text, events in --json", () => {
   const args = [
     "--circuit",
