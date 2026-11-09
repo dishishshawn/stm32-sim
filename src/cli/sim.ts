@@ -234,6 +234,7 @@ function main(argv: string[], once = false): number {
     message,
     seconds: s.seconds,
     cycles: s.cycles,
+    sleepCycles: s.sleepCycles,
     pc: hex(s.pc),
     at,
     halt: s.halt,
